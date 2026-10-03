@@ -24,13 +24,17 @@ async def get_submit_info(code: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
     now = datetime.utcnow()
-    is_closed = assignment.hard_deadline is not None and now > assignment.hard_deadline
+    is_closed = (
+        assignment.deadline is not None
+        and assignment.is_hard_deadline
+        and now > assignment.deadline
+    )
 
     return SubmitInfo(
         title=assignment.title,
         description=assignment.description,
-        soft_deadline=assignment.soft_deadline,
-        hard_deadline=assignment.hard_deadline,
+        deadline=assignment.deadline,
+        is_hard_deadline=assignment.is_hard_deadline,
         max_file_size_mb=assignment.max_file_size_mb,
         allowed_extensions=assignment.allowed_extensions,
         students=[StudentOut.model_validate(s) for s in assignment.group.students],
@@ -56,8 +60,8 @@ async def submit(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
     now = datetime.utcnow()
-    if assignment.hard_deadline and now > assignment.hard_deadline:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Submission closed after hard deadline")
+    if assignment.deadline and assignment.is_hard_deadline and now > assignment.deadline:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Submission closed after deadline")
 
     content = await file.read()
     max_bytes = assignment.max_file_size_mb * 1024 * 1024
@@ -72,7 +76,7 @@ async def submit(
         if ext not in [a.lower() for a in assignment.allowed_extensions]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File type not allowed")
 
-    is_late = assignment.soft_deadline is not None and now > assignment.soft_deadline
+    is_late = assignment.deadline is not None and now > assignment.deadline and not assignment.is_hard_deadline
 
     # Try to match student in group
     student_result = await db.execute(

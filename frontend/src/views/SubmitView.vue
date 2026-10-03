@@ -27,8 +27,8 @@ interface Student {
 interface SubmitInfoData {
   title: string
   description: string | null
-  soft_deadline: string | null
-  hard_deadline: string | null
+  deadline: string | null
+  is_hard_deadline: boolean
   max_file_size_mb: number
   allowed_extensions: string[] | null
   students: Student[]
@@ -160,8 +160,10 @@ onMounted(fetchInfo)
       </CardHeader>
       <CardContent class="space-y-4">
         <div class="space-y-1 text-sm">
-          <p>Мягкий дедлайн: {{ formatDate(info.soft_deadline) }}</p>
-          <p>Жёсткий дедлайн: {{ formatDate(info.hard_deadline) }}</p>
+          <p>
+            Дедлайн: {{ formatDate(info.deadline) }}
+            <span v-if="info.is_hard_deadline" class="ml-2 text-destructive">(жёсткий)</span>
+          </p>
           <p>Макс. размер файла: {{ info.max_file_size_mb }} МБ</p>
         </div>
 

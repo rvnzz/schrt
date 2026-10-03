@@ -48,8 +48,8 @@ class AssignmentCreate(BaseModel):
     title: str
     description: Optional[str] = None
     group_id: int
-    soft_deadline: Optional[datetime] = None
-    hard_deadline: Optional[datetime] = None
+    deadline: Optional[datetime] = None
+    is_hard_deadline: bool = False
     max_file_size_mb: int = 10
     allowed_extensions: Optional[List[str]] = None
 
@@ -60,8 +60,8 @@ class AssignmentOut(BaseModel):
     description: Optional[str]
     code: str
     group_id: int
-    soft_deadline: Optional[datetime]
-    hard_deadline: Optional[datetime]
+    deadline: Optional[datetime]
+    is_hard_deadline: bool
     max_file_size_mb: int
     allowed_extensions: Optional[List[str]]
     created_at: datetime
@@ -98,8 +98,8 @@ class SubmissionOut(BaseModel):
 class SubmitInfo(BaseModel):
     title: str
     description: Optional[str]
-    soft_deadline: Optional[datetime]
-    hard_deadline: Optional[datetime]
+    deadline: Optional[datetime]
+    is_hard_deadline: bool
     max_file_size_mb: int
     allowed_extensions: Optional[List[str]]
     students: List[StudentOut]

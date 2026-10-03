@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'vue-sonner'
 
 interface Group {
@@ -41,8 +42,8 @@ interface Assignment {
   title: string
   code: string
   group_id: number
-  soft_deadline: string | null
-  hard_deadline: string | null
+  deadline: string | null
+  is_hard_deadline: boolean
   max_file_size_mb: number
 }
 
@@ -55,8 +56,8 @@ const form = ref({
   title: '',
   description: '',
   group_id: '',
-  soft_deadline: '',
-  hard_deadline: '',
+  deadline: '',
+  is_hard_deadline: false,
   max_file_size_mb: 10,
 })
 
@@ -77,8 +78,8 @@ async function createAssignment() {
       title: form.value.title,
       description: form.value.description || null,
       group_id: Number(form.value.group_id),
-      soft_deadline: form.value.soft_deadline || null,
-      hard_deadline: form.value.hard_deadline || null,
+      deadline: form.value.deadline || null,
+      is_hard_deadline: form.value.is_hard_deadline,
       max_file_size_mb: Number(form.value.max_file_size_mb),
     })
     open.value = false
@@ -86,8 +87,8 @@ async function createAssignment() {
       title: '',
       description: '',
       group_id: '',
-      soft_deadline: '',
-      hard_deadline: '',
+      deadline: '',
+      is_hard_deadline: false,
       max_file_size_mb: 10,
     }
     await fetchData()
@@ -152,15 +153,13 @@ onMounted(fetchData)
                 </SelectContent>
               </Select>
             </div>
-            <div class="grid grid-cols-2 gap-4">
-              <div class="grid gap-2">
-                <Label>Мягкий дедлайн</Label>
-                <Input type="datetime-local" v-model="form.soft_deadline" />
-              </div>
-              <div class="grid gap-2">
-                <Label>Жёсткий дедлайн</Label>
-                <Input type="datetime-local" v-model="form.hard_deadline" />
-              </div>
+            <div class="grid gap-2">
+              <Label>Дедлайн</Label>
+              <Input type="datetime-local" v-model="form.deadline" />
+            </div>
+            <div class="flex items-center gap-2">
+              <Checkbox id="hardDeadline" v-model="form.is_hard_deadline" />
+              <Label for="hardDeadline" class="text-sm font-normal">Жёсткий дедлайн (блокировать сдачу после дедлайна)</Label>
             </div>
             <div class="grid gap-2">
               <Label>Макс. размер файла (МБ)</Label>
@@ -189,10 +188,8 @@ onMounted(fetchData)
         </CardHeader>
         <CardContent class="space-y-2">
           <p class="text-sm">
-            Мягкий дедлайн: {{ formatDate(assignment.soft_deadline) }}
-          </p>
-          <p class="text-sm">
-            Жёсткий дедлайн: {{ formatDate(assignment.hard_deadline) }}
+            Дедлайн: {{ formatDate(assignment.deadline) }}
+            <span v-if="assignment.is_hard_deadline" class="ml-2 text-destructive">(жёсткий)</span>
           </p>
           <p class="text-sm">Макс. размер: {{ assignment.max_file_size_mb }} МБ</p>
           <Button variant="outline" size="sm" as-child>

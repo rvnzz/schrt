@@ -13,7 +13,7 @@
 - S3-хранилище: **MinIO** (elestio/minio) в Docker
 - Инфраструктура: **Docker Compose**
 
-## Быстрый старт
+## Быстрый старт (разработка / сборка из исходников)
 
 1. Скопируйте `.env.example` в `.env` и при необходимости измените значения:
 
@@ -35,6 +35,24 @@ docker compose up --build
 3. Войдите под дефолтным преподавателем:
 - Логин: `teacher`
 - Пароль: `teacher`
+
+## Запуск из готового образа (production)
+
+Если образ уже опубликован в `ghcr.io/rvnzz/schrt`, используйте `docker-compose.prod.yml`:
+
+```bash
+cp .env.example .env
+# отредактируйте .env: установите SECRET_KEY, FIRST_TEACHER_PASSWORD и другие параметры
+docker compose -f docker-compose.prod.yml up -d
+```
+
+По умолчанию скачивается образ с тегом `main` (`ghcr.io/rvnzz/schrt:main`). Чтобы использовать другой тег, задайте переменную `APP_IMAGE` в `.env`:
+
+```env
+APP_IMAGE=ghcr.io/rvnzz/schrt:v1.0.0
+```
+
+Образ будет скачан из GitHub Container Registry, сборка не требуется.
 
 ## Архитектура образа
 

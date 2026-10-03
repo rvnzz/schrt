@@ -44,8 +44,8 @@ interface AssignmentDetail {
   code: string
   group_id: number
   group: Group
-  soft_deadline: string | null
-  hard_deadline: string | null
+  deadline: string | null
+  is_hard_deadline: boolean
   max_file_size_mb: number
   submissions: Submission[]
 }
@@ -124,8 +124,10 @@ onMounted(fetchAssignment)
         <CardTitle>Параметры</CardTitle>
       </CardHeader>
       <CardContent class="space-y-2 text-sm">
-        <p>Мягкий дедлайн: {{ formatDate(assignment.soft_deadline) }}</p>
-        <p>Жёсткий дедлайн: {{ formatDate(assignment.hard_deadline) }}</p>
+        <p>
+          Дедлайн: {{ formatDate(assignment.deadline) }}
+          <span v-if="assignment.is_hard_deadline" class="ml-2 text-destructive">(жёсткий)</span>
+        </p>
         <p>Макс. размер файла: {{ assignment.max_file_size_mb }} МБ</p>
         <p v-if="assignment.description">Описание: {{ assignment.description }}</p>
       </CardContent>

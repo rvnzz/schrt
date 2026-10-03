@@ -58,8 +58,8 @@ async def create_assignment(
         description=data.description,
         code=code,
         group_id=group.id,
-        soft_deadline=data.soft_deadline,
-        hard_deadline=data.hard_deadline,
+        deadline=data.deadline,
+        is_hard_deadline=data.is_hard_deadline,
         max_file_size_mb=data.max_file_size_mb,
         allowed_extensions=data.allowed_extensions,
     )
