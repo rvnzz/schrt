@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -54,7 +54,6 @@ const route = useRoute()
 const assignmentId = Number(route.params.id)
 const assignment = ref<AssignmentDetail | null>(null)
 const link = ref('')
-const downloadAllUrl = computed(() => `${api.defaults.baseURL}/submissions/assignments/${assignmentId}/download-all`)
 
 async function fetchAssignment() {
   try {
@@ -69,10 +68,34 @@ async function fetchAssignment() {
   }
 }
 
-async function downloadSingle(submissionId: number) {
+function triggerDownload(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
+}
+
+async function downloadSingle(submissionId: number, filename: string) {
   try {
-    const response = await api.get(`/submissions/${submissionId}/download`)
-    window.open(response.data.download_url, '_blank')
+    const response = await api.get(`/submissions/${submissionId}/download`, {
+      responseType: 'blob',
+    })
+    triggerDownload(response.data, filename)
+  } catch (err) {
+    toast.error(getErrorMessage(err))
+  }
+}
+
+async function downloadAll() {
+  try {
+    const response = await api.get(`/submissions/assignments/${assignmentId}/download-all`, {
+      responseType: 'blob',
+    })
+    triggerDownload(response.data, `assignment_${assignmentId}_submissions.zip`)
   } catch (err) {
     toast.error(getErrorMessage(err))
   }
@@ -101,9 +124,7 @@ onMounted(fetchAssignment)
         <h1 class="text-3xl font-bold">{{ assignment.title }}</h1>
         <p class="text-muted-foreground">Группа: {{ assignment.group.name }}</p>
       </div>
-      <Button variant="outline" as-child>
-        <a :href="downloadAllUrl" target="_blank">Скачать все работы</a>
-      </Button>
+      <Button variant="outline" @click="downloadAll">Скачать все работы</Button>
     </div>
 
     <Card>
@@ -162,7 +183,7 @@ onMounted(fetchAssignment)
                 <Badge v-else variant="default">Вовремя</Badge>
               </TableCell>
               <TableCell class="text-right">
-                <Button variant="outline" size="sm" @click="downloadSingle(sub.id)">Скачать</Button>
+                <Button variant="outline" size="sm" @click="downloadSingle(sub.id, sub.original_filename)">Скачать</Button>
               </TableCell>
             </TableRow>
           </TableBody>

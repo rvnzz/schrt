@@ -43,8 +43,21 @@ async def download_submission(
     submission = result.scalar_one_or_none()
     if submission is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
-    url = s3.get_download_url(submission.file_key)
-    return {"download_url": url}
+
+    s3_response = s3.get_object_stream(submission.file_key)
+
+    def streamer():
+        body = s3_response["Body"]
+        for chunk in body.iter_chunks(chunk_size=1024 * 1024):
+            yield chunk
+
+    return StreamingResponse(
+        streamer(),
+        media_type=s3_response.get("ContentType", "application/octet-stream"),
+        headers={
+            "Content-Disposition": f'attachment; filename="{submission.original_filename}"',
+        },
+    )
 
 
 @router.get("/assignments/{assignment_id}/download-all")

@@ -53,3 +53,9 @@ def get_object_bytes(key: str) -> bytes:
     client = get_s3_client()
     response = client.get_object(Bucket=settings.minio_bucket, Key=key)
     return response["Body"].read()
+
+
+def get_object_stream(key: str):
+    client = get_s3_client()
+    response = client.get_object(Bucket=settings.minio_bucket, Key=key)
+    return response
