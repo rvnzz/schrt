@@ -227,7 +227,7 @@ onMounted(fetchInfo)
                 <p class="text-xs">Максимум {{ info.max_file_size_mb }} МБ</p>
               </template>
             </div>
-            <Input id="file" type="file" class="hidden" ref="fileInput" @change="onFileChange" />
+            <input id="file" type="file" class="hidden" ref="fileInput" @change="onFileChange" />
           </div>
 
           <Button type="submit" class="w-full" :disabled="loading || info.is_closed">
