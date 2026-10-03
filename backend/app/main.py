@@ -1,8 +1,13 @@
 from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import FileResponse
 
 from app.routers import auth, groups, students, assignments, submissions, submit
+
+
+STATIC_DIR = os.environ.get("STATIC_DIR", "/app/static")
 
 
 @asynccontextmanager
@@ -46,3 +51,15 @@ app.include_router(submit.router, prefix="/api")
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+if os.path.isdir(STATIC_DIR):
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        requested_path = os.path.normpath(os.path.join(STATIC_DIR, full_path))
+        # Prevent path traversal outside static dir
+        if not requested_path.startswith(os.path.normpath(STATIC_DIR)):
+            return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+        if os.path.isfile(requested_path):
+            return FileResponse(requested_path)
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))

@@ -47,9 +47,8 @@ services:
       exit 0;
       "
 
-  backend:
-    build: ./backend
-    command: /app/entrypoint.sh
+  app:
+    build: .
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-schrt}:${POSTGRES_PASSWORD:-schrt_pass}@postgres/${POSTGRES_DB:-schrt}
       SECRET_KEY: ${SECRET_KEY:-super-secret-key-change-in-production}
@@ -59,32 +58,17 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-submissions}
       MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
-      LINK_PREFIX: ${LINK_PREFIX:-http://localhost:5174/s/}
+      LINK_PREFIX: ${LINK_PREFIX:-http://localhost:${APP_PORT:-8000}/s/}
       FIRST_TEACHER_USERNAME: ${FIRST_TEACHER_USERNAME:-teacher}
       FIRST_TEACHER_PASSWORD: ${FIRST_TEACHER_PASSWORD:-teacher}
+      STATIC_DIR: /app/static
     ports:
-      - "8001:8000"
-    volumes:
-      - ./backend:/app
+      - "${APP_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
       createbuckets:
         condition: service_completed_successfully
-
-  frontend:
-    build: ./frontend
-    command: npm run dev -- --host 0.0.0.0
-    environment:
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8001/api}
-      VITE_LINK_PREFIX: ${LINK_PREFIX:-http://localhost:5174/s/}
-    ports:
-      - "5174:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - backend
 
 volumes:
   postgres_data:

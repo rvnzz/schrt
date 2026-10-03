@@ -53,15 +53,17 @@ interface AssignmentDetail {
 const route = useRoute()
 const assignmentId = Number(route.params.id)
 const assignment = ref<AssignmentDetail | null>(null)
-const linkPrefix = import.meta.env.VITE_LINK_PREFIX || 'http://localhost:5173/s/'
-
-const link = computed(() => (assignment.value ? `${linkPrefix}${assignment.value.code}` : ''))
+const link = ref('')
 const downloadAllUrl = computed(() => `${api.defaults.baseURL}/submissions/assignments/${assignmentId}/download-all`)
 
 async function fetchAssignment() {
   try {
-    const response = await api.get(`/assignments/${assignmentId}`)
-    assignment.value = response.data
+    const [assignmentResponse, linkResponse] = await Promise.all([
+      api.get(`/assignments/${assignmentId}`),
+      api.get(`/assignments/${assignmentId}/link`),
+    ])
+    assignment.value = assignmentResponse.data
+    link.value = linkResponse.data.link
   } catch (err) {
     toast.error(getErrorMessage(err))
   }

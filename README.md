@@ -21,42 +21,36 @@
 cp .env.example .env
 ```
 
-2. Запустите инфраструктуру и сервисы:
+2. Запустите всё одной командой:
 
 ```bash
 docker compose up --build
 ```
 
-После запуска:
-- Frontend: http://localhost:5174
-- Backend API: http://localhost:8001
-- MinIO Console: http://localhost:9001
+После запуска приложение доступно по адресу:
+- **http://localhost:8000** — единый endpoint (frontend + API)
+- **http://localhost:8000/api** — REST API
+- **http://localhost:9001** — MinIO Console
 
 3. Войдите под дефолтным преподавателем:
 - Логин: `teacher`
 - Пароль: `teacher`
 
-## Локальная разработка (без Docker)
+## Архитектура образа
 
-Если нужно запускать backend/frontend локально:
+В продакшене frontend и backend собираются в **один Docker-образ**:
+- мультистейдж-сборка: сначала собирается frontend (`npm run build`), затем backend;
+- готовый образ содержит FastAPI, который раздаёт собранную статику Vue по корневому URL;
+- API доступно по префиксу `/api`.
 
-```bash
-# Инфраструктура
-docker compose up -d postgres minio createbuckets
+## GitHub Actions
 
-# Backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-cd backend
-alembic upgrade head
-uvicorn app.main:app --reload --port 8001
+В `.github/workflows/build.yml` настроен workflow, который:
+- собирает Docker-образ при пуше в `main`/`master` и при создании тегов `v*`;
+- публикует образ в **GitHub Container Registry (ghcr.io)**;
+- поддерживает multi-platform сборку (`linux/amd64`, `linux/arm64`).
 
-# Frontend (новое окно)
-cd frontend
-npm install
-npm run dev -- --port 5174
-```
+Для публикации убедитесь, что в репозитории включены **Actions permissions** → `Read and write permissions`, и разрешён пакет `ghcr.io`.
 
 ## Переменные окружения
 
@@ -65,9 +59,9 @@ npm run dev -- --port 5174
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Подключение к PostgreSQL |
 | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` | Подключение к MinIO |
 | `SECRET_KEY` | JWT-секрет |
-| `LINK_PREFIX` | Префикс ссылки для сдачи (например, `http://localhost:5174/s/`) |
+| `LINK_PREFIX` | Префикс ссылки для сдачи (например, `http://localhost:8000/s/`) |
+| `APP_PORT` | Внешний порт приложения (по умолчанию `8000`) |
 | `FIRST_TEACHER_USERNAME`, `FIRST_TEACHER_PASSWORD` | Дефолтный преподаватель |
-| `VITE_API_BASE_URL` | URL backend для frontend |
 
 ## Особенности
 
