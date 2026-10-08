@@ -60,6 +60,7 @@ async def create_assignment(
         group_id=group.id,
         deadline=data.deadline,
         is_hard_deadline=data.is_hard_deadline,
+        allow_group_submissions=data.allow_group_submissions,
         max_file_size_mb=data.max_file_size_mb,
         allowed_extensions=data.allowed_extensions,
     )

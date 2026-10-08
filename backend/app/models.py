@@ -1,5 +1,6 @@
 import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean, ARRAY, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -56,6 +57,7 @@ class Assignment(Base):
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
     deadline = Column(DateTime, nullable=True)
     is_hard_deadline = Column(Boolean, default=False)
+    allow_group_submissions = Column(Boolean, default=False)
     max_file_size_mb = Column(Integer, default=10)
     allowed_extensions = Column(ARRAY(String), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -77,6 +79,8 @@ class Submission(Base):
     file_size = Column(Integer, nullable=False)
     submitted_at = Column(DateTime, default=datetime.datetime.utcnow)
     is_late = Column(Boolean, default=False)
+    is_group_work = Column(Boolean, default=False)
+    group_members = Column(JSONB, nullable=True)
 
     assignment = relationship("Assignment", back_populates="submissions")
     student = relationship("Student", back_populates="submissions")

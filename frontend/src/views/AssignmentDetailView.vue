@@ -27,6 +27,11 @@ interface Group {
   name: string
 }
 
+interface GroupMember {
+  first_name: string
+  last_name: string
+}
+
 interface Submission {
   id: number
   first_name: string
@@ -35,6 +40,8 @@ interface Submission {
   file_size: number
   submitted_at: string
   is_late: boolean
+  is_group_work: boolean
+  group_members: GroupMember[] | null
 }
 
 interface AssignmentDetail {
@@ -46,6 +53,7 @@ interface AssignmentDetail {
   group: Group
   deadline: string | null
   is_hard_deadline: boolean
+  allow_group_submissions: boolean
   max_file_size_mb: number
   submissions: Submission[]
 }
@@ -114,6 +122,11 @@ function formatBytes(bytes: number) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
+function formatGroupMembers(submission: Submission): string {
+  if (!submission.is_group_work || !submission.group_members) return '—'
+  return submission.group_members.map((m) => `${m.first_name} ${m.last_name}`).join(', ')
+}
+
 onMounted(fetchAssignment)
 </script>
 
@@ -149,6 +162,7 @@ onMounted(fetchAssignment)
           Дедлайн: {{ formatDate(assignment.deadline) }}
           <span v-if="assignment.is_hard_deadline" class="ml-2 text-destructive">(жёсткий)</span>
         </p>
+        <p>Групповая сдача: {{ assignment.allow_group_submissions ? 'разрешена' : 'нет' }}</p>
         <p>Макс. размер файла: {{ assignment.max_file_size_mb }} МБ</p>
         <p v-if="assignment.description">Описание: {{ assignment.description }}</p>
       </CardContent>
@@ -168,6 +182,7 @@ onMounted(fetchAssignment)
               <TableHead>Размер</TableHead>
               <TableHead>Время</TableHead>
               <TableHead>Статус</TableHead>
+              <TableHead>Участники</TableHead>
               <TableHead class="text-right">Действия</TableHead>
             </TableRow>
           </TableHeader>
@@ -181,6 +196,10 @@ onMounted(fetchAssignment)
               <TableCell>
                 <Badge v-if="sub.is_late" variant="destructive">Просрочено</Badge>
                 <Badge v-else variant="default">Вовремя</Badge>
+              </TableCell>
+              <TableCell>
+                <Badge v-if="sub.is_group_work" variant="secondary">Групповая</Badge>
+                <span class="text-sm text-muted-foreground">{{ formatGroupMembers(sub) }}</span>
               </TableCell>
               <TableCell class="text-right">
                 <Button variant="outline" size="sm" @click="downloadSingle(sub.id, sub.original_filename)">Скачать</Button>

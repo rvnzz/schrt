@@ -44,6 +44,7 @@ interface Assignment {
   group_id: number
   deadline: string | null
   is_hard_deadline: boolean
+  allow_group_submissions: boolean
   max_file_size_mb: number
 }
 
@@ -58,6 +59,7 @@ const form = ref({
   group_id: '',
   deadline: '',
   is_hard_deadline: false,
+  allow_group_submissions: false,
   max_file_size_mb: 10,
 })
 
@@ -80,6 +82,7 @@ async function createAssignment() {
       group_id: Number(form.value.group_id),
       deadline: form.value.deadline || null,
       is_hard_deadline: form.value.is_hard_deadline,
+      allow_group_submissions: form.value.allow_group_submissions,
       max_file_size_mb: Number(form.value.max_file_size_mb),
     })
     open.value = false
@@ -89,6 +92,7 @@ async function createAssignment() {
       group_id: '',
       deadline: '',
       is_hard_deadline: false,
+      allow_group_submissions: false,
       max_file_size_mb: 10,
     }
     await fetchData()
@@ -161,6 +165,10 @@ onMounted(fetchData)
               <Checkbox id="hardDeadline" v-model="form.is_hard_deadline" />
               <Label for="hardDeadline" class="text-sm font-normal">Жёсткий дедлайн (блокировать сдачу после дедлайна)</Label>
             </div>
+            <div class="flex items-center gap-2">
+              <Checkbox id="allowGroup" v-model="form.allow_group_submissions" />
+              <Label for="allowGroup" class="text-sm font-normal">Разрешить групповую сдачу</Label>
+            </div>
             <div class="grid gap-2">
               <Label>Макс. размер файла (МБ)</Label>
               <Input type="number" min="1" v-model="form.max_file_size_mb" />
@@ -190,6 +198,9 @@ onMounted(fetchData)
           <p class="text-sm">
             Дедлайн: {{ formatDate(assignment.deadline) }}
             <span v-if="assignment.is_hard_deadline" class="ml-2 text-destructive">(жёсткий)</span>
+          </p>
+          <p class="text-sm">
+            Групповая сдача: {{ assignment.allow_group_submissions ? 'разрешена' : 'нет' }}
           </p>
           <p class="text-sm">Макс. размер: {{ assignment.max_file_size_mb }} МБ</p>
           <Button variant="outline" size="sm" as-child>

@@ -50,6 +50,7 @@ class AssignmentCreate(BaseModel):
     group_id: int
     deadline: Optional[datetime] = None
     is_hard_deadline: bool = False
+    allow_group_submissions: bool = False
     max_file_size_mb: int = 10
     allowed_extensions: Optional[List[str]] = None
 
@@ -62,6 +63,7 @@ class AssignmentOut(BaseModel):
     group_id: int
     deadline: Optional[datetime]
     is_hard_deadline: bool
+    allow_group_submissions: bool
     max_file_size_mb: int
     allowed_extensions: Optional[List[str]]
     created_at: datetime
@@ -82,6 +84,11 @@ class GroupDetailOut(GroupOut):
     assignments: List["AssignmentWithSubmissionsOut"] = []
 
 
+class GroupMember(BaseModel):
+    first_name: str
+    last_name: str
+
+
 class SubmissionOut(BaseModel):
     id: int
     assignment_id: int
@@ -92,6 +99,8 @@ class SubmissionOut(BaseModel):
     file_size: int
     submitted_at: datetime
     is_late: bool
+    is_group_work: bool
+    group_members: Optional[List[GroupMember]]
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -100,6 +109,7 @@ class SubmitInfo(BaseModel):
     description: Optional[str]
     deadline: Optional[datetime]
     is_hard_deadline: bool
+    allow_group_submissions: bool
     max_file_size_mb: int
     allowed_extensions: Optional[List[str]]
     students: List[StudentOut]
@@ -109,6 +119,8 @@ class SubmitInfo(BaseModel):
 class SubmitPayload(BaseModel):
     first_name: str
     last_name: str
+    is_group_work: bool = False
+    group_members: Optional[List[GroupMember]] = None
 
 
 AssignmentWithSubmissionsOut.model_rebuild()

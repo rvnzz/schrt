@@ -13,7 +13,10 @@ async def build_submissions_zip(submissions: List[Submission]) -> bytes:
         for submission in submissions:
             try:
                 data = s3.get_object_bytes(submission.file_key)
-                filename = f"{submission.last_name}_{submission.first_name}_{submission.id}_{submission.original_filename}"
+                if submission.is_group_work:
+                    filename = f"group_{submission.last_name}_{submission.first_name}_{submission.id}_{submission.original_filename}"
+                else:
+                    filename = f"{submission.last_name}_{submission.first_name}_{submission.id}_{submission.original_filename}"
                 zf.writestr(filename, data)
             except Exception:
                 continue

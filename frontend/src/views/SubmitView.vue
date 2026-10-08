@@ -15,7 +15,8 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Upload } from 'lucide-vue-next'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Upload, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 
 interface Student {
@@ -29,6 +30,7 @@ interface SubmitInfoData {
   description: string | null
   deadline: string | null
   is_hard_deadline: boolean
+  allow_group_submissions: boolean
   max_file_size_mb: number
   allowed_extensions: string[] | null
   students: Student[]
@@ -49,6 +51,28 @@ const lastWrapper = ref<HTMLDivElement | null>(null)
 const showFirstSuggestions = ref(false)
 const showLastSuggestions = ref(false)
 const isDragging = ref(false)
+const isGroupWork = ref(false)
+const groupMembers = ref<{ first_name: string; last_name: string }[]>([])
+
+function addGroupMember() {
+  groupMembers.value.push({ first_name: '', last_name: '' })
+}
+
+function removeGroupMember(index: number) {
+  groupMembers.value.splice(index, 1)
+}
+
+function validateGroupMembers(): boolean {
+  if (!isGroupWork.value) return true
+  const valid = groupMembers.value.every(
+    (m) => m.first_name.trim() && m.last_name.trim()
+  )
+  if (!valid) {
+    toast.error('Укажите имя и фамилию всех участников группы')
+    return false
+  }
+  return true
+}
 
 const firstNameSuggestions = computed(() => {
   if (!info.value) return []
@@ -129,10 +153,29 @@ async function onSubmit() {
     toast.error('Укажите имя и фамилию')
     return
   }
+  if (isGroupWork.value && groupMembers.value.length === 0) {
+    toast.error('Добавьте хотя бы одного участника группы')
+    return
+  }
+  if (!validateGroupMembers()) {
+    return
+  }
 
   const formData = new FormData()
   formData.append('first_name', firstName.value.trim())
   formData.append('last_name', lastName.value.trim())
+  formData.append('is_group_work', String(isGroupWork.value))
+  if (isGroupWork.value && groupMembers.value.length > 0) {
+    formData.append(
+      'group_members',
+      JSON.stringify(
+        groupMembers.value.map((m) => ({
+          first_name: m.first_name.trim(),
+          last_name: m.last_name.trim(),
+        }))
+      )
+    )
+  }
   formData.append('file', file.value)
 
   loading.value = true
@@ -202,6 +245,26 @@ onMounted(fetchInfo)
                 {{ student.last_name }} {{ student.first_name }}
               </li>
             </ul>
+          </div>
+
+          <div v-if="info.allow_group_submissions" class="flex items-center gap-2">
+            <Checkbox id="groupWork" v-model="isGroupWork" />
+            <Label for="groupWork" class="text-sm font-normal">Делал в группе</Label>
+          </div>
+
+          <div v-if="info.allow_group_submissions && isGroupWork" class="space-y-3 rounded-md border p-3">
+            <div class="flex items-center justify-between">
+              <Label class="text-sm font-medium">Участники группы</Label>
+              <Button type="button" variant="outline" size="sm" @click="addGroupMember">Добавить участника</Button>
+            </div>
+            <div v-for="(member, index) in groupMembers" :key="index" class="grid grid-cols-[1fr_1fr_auto] gap-2">
+              <Input v-model="member.first_name" placeholder="Имя" />
+              <Input v-model="member.last_name" placeholder="Фамилия" />
+              <Button type="button" variant="ghost" size="icon" @click="removeGroupMember(index)">
+                <X class="h-4 w-4" />
+              </Button>
+            </div>
+            <p v-if="groupMembers.length === 0" class="text-sm text-muted-foreground">Нет добавленных участников</p>
           </div>
 
           <div class="grid gap-2">
