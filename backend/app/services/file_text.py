@@ -1,4 +1,5 @@
 import io
+import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass
 from typing import List, Tuple
@@ -54,7 +55,57 @@ def _image_to_base64(data: bytes, mime: str = "image/png") -> str:
     return f"data:{mime};base64,{base64.b64encode(data).decode()}"
 
 
+def _is_odt(content: bytes) -> bool:
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            if "mimetype" in zf.namelist():
+                mimetype = zf.read("mimetype").decode("utf-8", errors="ignore").strip()
+                return "opendocument" in mimetype
+    except Exception:
+        pass
+    return False
+
+
+def _extract_odt(content: bytes) -> ExtractedContent:
+    text_parts: List[str] = []
+    images: List[Tuple[str, str]] = []
+    notes: List[str] = []
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            if "content.xml" in zf.namelist():
+                content_xml = zf.read("content.xml")
+                root = ET.fromstring(content_xml)
+                for elem in root.iter():
+                    if elem.text and elem.text.strip():
+                        text_parts.append(elem.text.strip())
+                    if elem.tail and elem.tail.strip():
+                        text_parts.append(elem.tail.strip())
+            else:
+                notes.append("В ODT-файле не найден content.xml")
+
+            for name in sorted(zf.namelist()):
+                if name.startswith("Pictures/") and not name.startswith("Thumbnails/"):
+                    ext = name.split(".")[-1].lower()
+                    if ext not in IMAGE_EXTENSIONS:
+                        notes.append(f"Пропущено изображение ODT неподдерживаемого формата: {name}")
+                        continue
+                    try:
+                        raw = zf.read(name)
+                        resized = _resize_image(raw)
+                        images.append(("image/png", _image_to_base64(resized)))
+                    except Exception as exc:
+                        notes.append(f"Не удалось обработать изображение {name}: {exc}")
+    except Exception as exc:
+        notes.append(f"Не удалось открыть ODT как zip: {exc}")
+
+    return ExtractedContent(text="\n".join(text_parts), images_base64=images, notes=notes)
+
+
 def _extract_docx(content: bytes) -> ExtractedContent:
+    if _is_odt(content):
+        return _extract_odt(content)
+
     text_parts: List[str] = []
     images: List[Tuple[str, str]] = []
     notes: List[str] = []
@@ -142,7 +193,7 @@ def extract_file(key: str, original_filename: str) -> ExtractedContent:
     data = s3.get_object_bytes(key)
     ext = original_filename.split(".")[-1].lower() if "." in original_filename else ""
 
-    if ext in ("docx", "doc"):
+    if ext in ("docx", "doc", "odt"):
         return _extract_docx(data)
     if ext == "pdf":
         return _extract_pdf(data)
