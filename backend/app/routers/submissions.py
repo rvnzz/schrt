@@ -1,4 +1,5 @@
 from datetime import datetime
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,11 +52,13 @@ async def download_submission(
         for chunk in body.iter_chunks(chunk_size=1024 * 1024):
             yield chunk
 
+    filename = submission.original_filename
+    encoded = quote(filename, safe="")
     return StreamingResponse(
         streamer(),
         media_type=s3_response.get("ContentType", "application/octet-stream"),
         headers={
-            "Content-Disposition": f'attachment; filename="{submission.original_filename}"',
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded}",
         },
     )
 
