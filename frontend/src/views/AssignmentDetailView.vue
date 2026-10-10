@@ -66,6 +66,7 @@ const route = useRoute()
 const assignmentId = Number(route.params.id)
 const assignment = ref<AssignmentDetail | null>(null)
 const link = ref('')
+const expandedFeedback = ref<Record<number, boolean>>({})
 let pollInterval: number | null = null
 
 function hasPendingGrading(): boolean {
@@ -136,6 +137,21 @@ async function gradeSubmission(submissionId: number) {
     await api.post(`/submissions/${submissionId}/grade`)
     toast.success('Перепроверка запущена')
     await fetchAssignment()
+  } catch (err) {
+    toast.error(getErrorMessage(err))
+  }
+}
+
+function toggleFeedback(submissionId: number) {
+  expandedFeedback.value[submissionId] = !expandedFeedback.value[submissionId]
+}
+
+async function exportGradesCsv() {
+  try {
+    const response = await api.get(`/assignments/${assignmentId}/grades-csv`, {
+      responseType: 'blob',
+    })
+    triggerDownload(response.data, `assignment_${assignmentId}_grades.csv`)
   } catch (err) {
     toast.error(getErrorMessage(err))
   }
@@ -237,16 +253,25 @@ onUnmounted(stopPolling)
 
     <Card>
       <CardHeader>
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle>Сданные работы ({{ assignment.submissions.length }})</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            @click="gradeAll"
-            :disabled="!assignment.brief_md"
-          >
-            Проверить все работы AI
-          </Button>
+          <div class="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              @click="gradeAll"
+              :disabled="!assignment.brief_md"
+            >
+              Проверить все работы AI
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              @click="exportGradesCsv"
+            >
+              Экспорт оценок AI (CSV)
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -292,7 +317,23 @@ onUnmounted(stopPolling)
                 <span v-else class="text-muted-foreground">{{ aiStatusText(sub.ai_status) }}</span>
               </TableCell>
               <TableCell>
-                <span v-if="sub.ai_feedback" class="text-sm text-muted-foreground">{{ sub.ai_feedback }}</span>
+                <div v-if="sub.ai_feedback" class="max-w-xs">
+                  <div
+                    :class="[
+                      'text-sm text-muted-foreground',
+                      !expandedFeedback[sub.id] && 'line-clamp-2',
+                    ]"
+                  >
+                    {{ sub.ai_feedback }}
+                  </div>
+                  <button
+                    type="button"
+                    class="mt-1 text-xs text-primary hover:underline"
+                    @click="toggleFeedback(sub.id)"
+                  >
+                    {{ expandedFeedback[sub.id] ? 'Свернуть' : 'Развернуть' }}
+                  </button>
+                </div>
                 <span v-else class="text-sm text-muted-foreground">—</span>
               </TableCell>
               <TableCell class="text-right">

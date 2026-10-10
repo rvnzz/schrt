@@ -1,3 +1,5 @@
+import csv
+import io
 import random
 import string
 from datetime import datetime
@@ -5,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.responses import StreamingResponse
 
 from app.database import get_db
 from app.auth import get_current_teacher
@@ -158,6 +161,66 @@ async def grade_all_submissions(
     )
     await db.commit()
     return {"success": True}
+
+
+@router.get("/{assignment_id}/grades-csv")
+async def export_grades_csv(
+    assignment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    result = await db.execute(
+        select(Assignment)
+        .join(Group)
+        .where(Assignment.id == assignment_id, Group.teacher_id == current_teacher.id)
+        .options(selectinload(Assignment.submissions), selectinload(Assignment.group))
+    )
+    assignment = result.scalar_one_or_none()
+    if assignment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Фамилия",
+        "Имя",
+        "Файл",
+        "Размер",
+        "Время сдачи",
+        "Просрочено",
+        "Групповая",
+        "Участники",
+        "Статус AI",
+        "Оценка AI",
+        "Комментарий AI",
+    ])
+
+    for sub in assignment.submissions:
+        members = ", ".join(
+            f"{m.first_name} {m.last_name}" for m in (sub.group_members or [])
+        )
+        writer.writerow([
+            sub.last_name,
+            sub.first_name,
+            sub.original_filename,
+            sub.file_size,
+            sub.submitted_at.isoformat() if sub.submitted_at else "",
+            "Да" if sub.is_late else "Нет",
+            "Да" if sub.is_group_work else "Нет",
+            members,
+            sub.ai_status,
+            sub.ai_grade if sub.ai_grade is not None else "",
+            sub.ai_feedback or "",
+        ])
+
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+    return StreamingResponse(
+        io.BytesIO(csv_bytes),
+        media_type="text/csv; charset=utf-8-sig",
+        headers={
+            "Content-Disposition": f'attachment; filename="assignment_{assignment_id}_grades.csv"',
+        },
+    )
 
 
 @router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
