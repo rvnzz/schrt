@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.auth import get_current_teacher
 from app.models import Teacher, Group, Assignment, Submission
-from app.schemas import AssignmentCreate, AssignmentOut, AssignmentDetailOut
+from app.schemas import AssignmentCreate, AssignmentUpdate, AssignmentOut, AssignmentDetailOut
 from app.config import settings
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
@@ -65,6 +65,45 @@ async def create_assignment(
         allowed_extensions=data.allowed_extensions,
     )
     db.add(assignment)
+    await db.commit()
+    await db.refresh(assignment)
+    return assignment
+
+
+@router.patch("/{assignment_id}", response_model=AssignmentOut)
+async def update_assignment(
+    assignment_id: int,
+    data: AssignmentUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    result = await db.execute(
+        select(Assignment)
+        .join(Group)
+        .where(Assignment.id == assignment_id, Group.teacher_id == current_teacher.id)
+        .options(selectinload(Assignment.group))
+    )
+    assignment = result.scalar_one_or_none()
+    if assignment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    if data.group_id is not None and data.group_id != assignment.group_id:
+        group_result = await db.execute(
+            select(Group).where(Group.id == data.group_id, Group.teacher_id == current_teacher.id)
+        )
+        group = group_result.scalar_one_or_none()
+        if group is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        assignment.group_id = group.id
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field == "group_id":
+            continue
+        if field == "title" and value is not None:
+            value = value.strip()
+        setattr(assignment, field, value)
+
     await db.commit()
     await db.refresh(assignment)
     return assignment

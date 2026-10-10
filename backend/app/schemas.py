@@ -55,6 +55,17 @@ class AssignmentCreate(BaseModel):
     allowed_extensions: Optional[List[str]] = None
 
 
+class AssignmentUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    group_id: Optional[int] = None
+    deadline: Optional[datetime] = None
+    is_hard_deadline: Optional[bool] = None
+    allow_group_submissions: Optional[bool] = None
+    max_file_size_mb: Optional[int] = None
+    allowed_extensions: Optional[List[str]] = None
+
+
 class AssignmentOut(BaseModel):
     id: int
     title: str

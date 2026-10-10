@@ -20,7 +20,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import {
   Select,
@@ -40,6 +39,7 @@ interface Group {
 interface Assignment {
   id: number
   title: string
+  description: string | null
   code: string
   group_id: number
   deadline: string | null
@@ -50,8 +50,9 @@ interface Assignment {
 
 const assignments = ref<Assignment[]>([])
 const groups = ref<Group[]>([])
-const open = ref(false)
+const isOpen = ref(false)
 const loading = ref(false)
+const editingAssignment = ref<Assignment | null>(null)
 
 const form = ref({
   title: '',
@@ -63,6 +64,30 @@ const form = ref({
   max_file_size_mb: 10,
 })
 
+function resetForm() {
+  form.value = {
+    title: '',
+    description: '',
+    group_id: '',
+    deadline: '',
+    is_hard_deadline: false,
+    allow_group_submissions: false,
+    max_file_size_mb: 10,
+  }
+}
+
+function populateForm(assignment: Assignment) {
+  form.value = {
+    title: assignment.title,
+    description: assignment.description || '',
+    group_id: String(assignment.group_id),
+    deadline: assignment.deadline ? assignment.deadline.slice(0, 16) : '',
+    is_hard_deadline: assignment.is_hard_deadline,
+    allow_group_submissions: assignment.allow_group_submissions,
+    max_file_size_mb: assignment.max_file_size_mb,
+  }
+}
+
 async function fetchData() {
   try {
     const [a, g] = await Promise.all([api.get('/assignments'), api.get('/groups')])
@@ -73,30 +98,42 @@ async function fetchData() {
   }
 }
 
-async function createAssignment() {
+function openCreateModal() {
+  editingAssignment.value = null
+  resetForm()
+  isOpen.value = true
+}
+
+function openEditModal(assignment: Assignment) {
+  editingAssignment.value = assignment
+  populateForm(assignment)
+  isOpen.value = true
+}
+
+async function saveAssignment() {
   loading.value = true
+  const payload = {
+    title: form.value.title,
+    description: form.value.description || null,
+    group_id: Number(form.value.group_id),
+    deadline: form.value.deadline || null,
+    is_hard_deadline: form.value.is_hard_deadline,
+    allow_group_submissions: form.value.allow_group_submissions,
+    max_file_size_mb: Number(form.value.max_file_size_mb),
+  }
+
   try {
-    await api.post('/assignments', {
-      title: form.value.title,
-      description: form.value.description || null,
-      group_id: Number(form.value.group_id),
-      deadline: form.value.deadline || null,
-      is_hard_deadline: form.value.is_hard_deadline,
-      allow_group_submissions: form.value.allow_group_submissions,
-      max_file_size_mb: Number(form.value.max_file_size_mb),
-    })
-    open.value = false
-    form.value = {
-      title: '',
-      description: '',
-      group_id: '',
-      deadline: '',
-      is_hard_deadline: false,
-      allow_group_submissions: false,
-      max_file_size_mb: 10,
+    if (editingAssignment.value) {
+      await api.patch(`/assignments/${editingAssignment.value.id}`, payload)
+      toast.success('Задание обновлено')
+    } else {
+      await api.post('/assignments', payload)
+      toast.success('Задание создано')
     }
+    isOpen.value = false
+    resetForm()
+    editingAssignment.value = null
     await fetchData()
-    toast.success('Задание создано')
   } catch (err) {
     toast.error(getErrorMessage(err))
   } finally {
@@ -126,15 +163,15 @@ onMounted(fetchData)
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="text-3xl font-bold">Задания</h1>
-      <Dialog v-model:open="open">
-        <DialogTrigger as-child>
-          <Button>Создать задание</Button>
-        </DialogTrigger>
-        <DialogContent class="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Новое задание</DialogTitle>
-            <DialogDescription>Заполните данные задания</DialogDescription>
-          </DialogHeader>
+      <Button @click="openCreateModal">Создать задание</Button>
+    </div>
+
+    <Dialog v-model:open="isOpen">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ editingAssignment ? 'Редактировать задание' : 'Новое задание' }}</DialogTitle>
+          <DialogDescription>Заполните данные задания</DialogDescription>
+        </DialogHeader>
           <div class="grid gap-4 py-4">
             <div class="grid gap-2">
               <Label>Название</Label>
@@ -175,11 +212,12 @@ onMounted(fetchData)
             </div>
           </div>
           <DialogFooter>
-            <Button @click="createAssignment" :disabled="loading || !form.title || !form.group_id">Создать</Button>
+            <Button @click="saveAssignment" :disabled="loading || !form.title || !form.group_id">
+              {{ editingAssignment ? 'Сохранить' : 'Создать' }}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
 
     <div class="grid gap-4">
       <Card v-for="assignment in assignments" :key="assignment.id">
@@ -191,7 +229,10 @@ onMounted(fetchData)
                 Группа: {{ groupName(assignment.group_id) }} | Код: {{ assignment.code }}
               </CardDescription>
             </div>
-            <Button variant="destructive" size="sm" @click="deleteAssignment(assignment.id)">Удалить</Button>
+            <div class="flex gap-2">
+              <Button variant="outline" size="sm" @click="openEditModal(assignment)">Редактировать</Button>
+              <Button variant="destructive" size="sm" @click="deleteAssignment(assignment.id)">Удалить</Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent class="space-y-2">
