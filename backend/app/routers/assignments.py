@@ -2,7 +2,7 @@ import random
 import string
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -126,6 +126,38 @@ async def get_assignment(
     if assignment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
     return assignment
+
+
+@router.post("/{assignment_id}/grade-all", response_model=dict)
+async def grade_all_submissions(
+    assignment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    result = await db.execute(
+        select(Assignment)
+        .join(Group)
+        .where(Assignment.id == assignment_id, Group.teacher_id == current_teacher.id)
+    )
+    assignment = result.scalar_one_or_none()
+    if assignment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    if not assignment.brief_md:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Assignment has no AI brief",
+        )
+
+    await db.execute(
+        update(Submission)
+        .where(
+            Submission.assignment_id == assignment_id,
+            Submission.ai_status.in_(["disabled", "error"]),
+        )
+        .values(ai_status="pending", ai_grade=None, ai_feedback=None)
+    )
+    await db.commit()
+    return {"success": True}
 
 
 @router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)

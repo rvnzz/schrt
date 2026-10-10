@@ -57,6 +57,7 @@ interface AssignmentDetail {
   deadline: string | null
   is_hard_deadline: boolean
   allow_group_submissions: boolean
+  brief_md: string | null
   max_file_size_mb: number
   submissions: Submission[]
 }
@@ -115,6 +116,26 @@ async function downloadAll() {
       responseType: 'blob',
     })
     triggerDownload(response.data, `assignment_${assignmentId}_submissions.zip`)
+  } catch (err) {
+    toast.error(getErrorMessage(err))
+  }
+}
+
+async function gradeAll() {
+  try {
+    await api.post(`/assignments/${assignmentId}/grade-all`)
+    toast.success('Проверка всех работ запущена')
+    await fetchAssignment()
+  } catch (err) {
+    toast.error(getErrorMessage(err))
+  }
+}
+
+async function gradeSubmission(submissionId: number) {
+  try {
+    await api.post(`/submissions/${submissionId}/grade`)
+    toast.success('Перепроверка запущена')
+    await fetchAssignment()
   } catch (err) {
     toast.error(getErrorMessage(err))
   }
@@ -216,7 +237,17 @@ onUnmounted(stopPolling)
 
     <Card>
       <CardHeader>
-        <CardTitle>Сданные работы ({{ assignment.submissions.length }})</CardTitle>
+        <div class="flex items-center justify-between">
+          <CardTitle>Сданные работы ({{ assignment.submissions.length }})</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="gradeAll"
+            :disabled="!assignment.brief_md"
+          >
+            Проверить все работы AI
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <Table>
@@ -265,7 +296,10 @@ onUnmounted(stopPolling)
                 <span v-else class="text-sm text-muted-foreground">—</span>
               </TableCell>
               <TableCell class="text-right">
-                <Button variant="outline" size="sm" @click="downloadSingle(sub.id, sub.original_filename)">Скачать</Button>
+                <div class="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" @click="gradeSubmission(sub.id)">Перепроверить</Button>
+                  <Button variant="outline" size="sm" @click="downloadSingle(sub.id, sub.original_filename)">Скачать</Button>
+                </div>
               </TableCell>
             </TableRow>
           </TableBody>

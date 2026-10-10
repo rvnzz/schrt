@@ -1,6 +1,6 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.responses import StreamingResponse
@@ -58,6 +58,35 @@ async def download_submission(
             "Content-Disposition": f'attachment; filename="{submission.original_filename}"',
         },
     )
+
+
+@router.post("/{submission_id}/grade", response_model=dict)
+async def grade_submission_manual(
+    submission_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    result = await db.execute(
+        select(Submission)
+        .join(Assignment)
+        .join(Group)
+        .where(Submission.id == submission_id, Group.teacher_id == current_teacher.id)
+        .options(selectinload(Submission.assignment))
+    )
+    submission = result.scalar_one_or_none()
+    if submission is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+    if not submission.assignment.brief_md:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Assignment has no AI brief",
+        )
+
+    submission.ai_status = "pending"
+    submission.ai_grade = None
+    submission.ai_feedback = None
+    await db.commit()
+    return {"success": True}
 
 
 @router.get("/assignments/{assignment_id}/download-all")
