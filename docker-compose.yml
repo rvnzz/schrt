@@ -62,8 +62,32 @@ services:
       FIRST_TEACHER_USERNAME: ${FIRST_TEACHER_USERNAME:-teacher}
       FIRST_TEACHER_PASSWORD: ${FIRST_TEACHER_PASSWORD:-teacher}
       STATIC_DIR: /app/static
+      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY:-}
+      OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
+      OPENCODE_GO_MODEL: ${OPENCODE_GO_MODEL:-glm-5.3-flash}
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
     ports:
       - "${APP_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
+
+  ai-grader:
+    build: .
+    command: python -m app.worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-schrt}:${POSTGRES_PASSWORD:-schrt_pass}@postgres/${POSTGRES_DB:-schrt}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-submissions}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY:-}
+      OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
+      OPENCODE_GO_MODEL: ${OPENCODE_GO_MODEL:-glm-5.3-flash}
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
     depends_on:
       postgres:
         condition: service_healthy

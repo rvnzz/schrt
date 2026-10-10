@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import Assignment, Group, Student, Submission
 from app.schemas import SubmitInfo, SubmitPayload, StudentOut, GroupMember
+from app.config import settings
 from app import s3
 
 router = APIRouter(prefix="/submit", tags=["submit"])
@@ -128,6 +129,8 @@ async def submit(
     key = s3.generate_file_key(assignment.code, file.filename)
     s3.upload_file(content, key, file.content_type or "application/octet-stream")
 
+    ai_status = "pending" if (settings.ai_enabled and assignment.brief_md) else "disabled"
+
     submission = Submission(
         assignment_id=assignment.id,
         student_id=student.id if student else None,
@@ -140,6 +143,7 @@ async def submit(
         is_late=is_late,
         is_group_work=is_group_work,
         group_members=[member.model_dump() for member in members] if members else None,
+        ai_status=ai_status,
     )
     db.add(submission)
     await db.commit()

@@ -23,5 +23,14 @@ class Settings(BaseSettings):
     first_teacher_username: str = "teacher"
     first_teacher_password: str = "teacher"
 
+    opencode_go_api_key: str = ""
+    opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
+    opencode_go_model: str = "glm-5.3-flash"
+    worker_poll_seconds: int = 5
+
+    @property
+    def ai_enabled(self) -> bool:
+        return bool(self.opencode_go_api_key)
+
 
 settings = Settings()

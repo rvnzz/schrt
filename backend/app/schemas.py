@@ -51,6 +51,7 @@ class AssignmentCreate(BaseModel):
     deadline: Optional[datetime] = None
     is_hard_deadline: bool = False
     allow_group_submissions: bool = False
+    brief_md: Optional[str] = None
     max_file_size_mb: int = 10
     allowed_extensions: Optional[List[str]] = None
 
@@ -62,6 +63,7 @@ class AssignmentUpdate(BaseModel):
     deadline: Optional[datetime] = None
     is_hard_deadline: Optional[bool] = None
     allow_group_submissions: Optional[bool] = None
+    brief_md: Optional[str] = None
     max_file_size_mb: Optional[int] = None
     allowed_extensions: Optional[List[str]] = None
 
@@ -75,6 +77,7 @@ class AssignmentOut(BaseModel):
     deadline: Optional[datetime]
     is_hard_deadline: bool
     allow_group_submissions: bool
+    brief_md: Optional[str]
     max_file_size_mb: int
     allowed_extensions: Optional[List[str]]
     created_at: datetime
@@ -112,6 +115,9 @@ class SubmissionOut(BaseModel):
     is_late: bool
     is_group_work: bool
     group_members: Optional[List[GroupMember]]
+    ai_status: str
+    ai_grade: Optional[int]
+    ai_feedback: Optional[str]
     model_config = ConfigDict(from_attributes=True)
 
 

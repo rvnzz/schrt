@@ -45,6 +45,7 @@ interface Assignment {
   deadline: string | null
   is_hard_deadline: boolean
   allow_group_submissions: boolean
+  brief_md: string | null
   max_file_size_mb: number
 }
 
@@ -61,8 +62,10 @@ const form = ref({
   deadline: '',
   is_hard_deadline: false,
   allow_group_submissions: false,
+  brief_md: '',
   max_file_size_mb: 10,
 })
+const briefMdFile = ref<HTMLInputElement | null>(null)
 
 function resetForm() {
   form.value = {
@@ -72,7 +75,11 @@ function resetForm() {
     deadline: '',
     is_hard_deadline: false,
     allow_group_submissions: false,
+    brief_md: '',
     max_file_size_mb: 10,
+  }
+  if (briefMdFile.value) {
+    briefMdFile.value.value = ''
   }
 }
 
@@ -84,8 +91,20 @@ function populateForm(assignment: Assignment) {
     deadline: assignment.deadline ? assignment.deadline.slice(0, 16) : '',
     is_hard_deadline: assignment.is_hard_deadline,
     allow_group_submissions: assignment.allow_group_submissions,
+    brief_md: assignment.brief_md || '',
     max_file_size_mb: assignment.max_file_size_mb,
   }
+}
+
+function onBriefMdFileChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    form.value.brief_md = String(reader.result || '')
+  }
+  reader.readAsText(file)
 }
 
 async function fetchData() {
@@ -112,7 +131,7 @@ function openEditModal(assignment: Assignment) {
 
 async function saveAssignment() {
   loading.value = true
-  const payload = {
+  const payload: any = {
     title: form.value.title,
     description: form.value.description || null,
     group_id: Number(form.value.group_id),
@@ -120,6 +139,9 @@ async function saveAssignment() {
     is_hard_deadline: form.value.is_hard_deadline,
     allow_group_submissions: form.value.allow_group_submissions,
     max_file_size_mb: Number(form.value.max_file_size_mb),
+  }
+  if (form.value.brief_md.trim()) {
+    payload.brief_md = form.value.brief_md.trim()
   }
 
   try {
@@ -205,6 +227,11 @@ onMounted(fetchData)
             <div class="flex items-center gap-2">
               <Checkbox id="allowGroup" v-model="form.allow_group_submissions" />
               <Label for="allowGroup" class="text-sm font-normal">Разрешить групповую сдачу</Label>
+            </div>
+            <div class="grid gap-2">
+              <Label>Текст задания для AI (markdown)</Label>
+              <Textarea v-model="form.brief_md" rows="6" placeholder="Введите markdown или загрузите .md файл" />
+              <input type="file" accept=".md,.markdown" ref="briefMdFile" @change="onBriefMdFileChange" class="block w-full text-sm text-muted-foreground file:mr-4 file:rounded file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium" />
             </div>
             <div class="grid gap-2">
               <Label>Макс. размер файла (МБ)</Label>

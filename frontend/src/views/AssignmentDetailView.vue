@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -42,6 +42,9 @@ interface Submission {
   is_late: boolean
   is_group_work: boolean
   group_members: GroupMember[] | null
+  ai_status: string
+  ai_grade: number | null
+  ai_feedback: string | null
 }
 
 interface AssignmentDetail {
@@ -62,6 +65,11 @@ const route = useRoute()
 const assignmentId = Number(route.params.id)
 const assignment = ref<AssignmentDetail | null>(null)
 const link = ref('')
+let pollInterval: number | null = null
+
+function hasPendingGrading(): boolean {
+  return assignment.value?.submissions.some((s) => s.ai_status === 'pending') ?? false
+}
 
 async function fetchAssignment() {
   try {
@@ -71,6 +79,9 @@ async function fetchAssignment() {
     ])
     assignment.value = assignmentResponse.data
     link.value = linkResponse.data.link
+    if (hasPendingGrading()) {
+      startPolling()
+    }
   } catch (err) {
     toast.error(getErrorMessage(err))
   }
@@ -127,7 +138,42 @@ function formatGroupMembers(submission: Submission): string {
   return submission.group_members.map((m) => `${m.first_name} ${m.last_name}`).join(', ')
 }
 
-onMounted(fetchAssignment)
+function aiStatusText(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'Проверяется…',
+    done: 'Готово',
+    error: 'Ошибка',
+    disabled: '—',
+  }
+  return map[status] || status
+}
+
+function startPolling() {
+  if (pollInterval) return
+  pollInterval = window.setInterval(() => {
+    if (hasPendingGrading()) {
+      fetchAssignment()
+    } else {
+      stopPolling()
+    }
+  }, 5000)
+}
+
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
+}
+
+onMounted(async () => {
+  await fetchAssignment()
+  if (hasPendingGrading()) {
+    startPolling()
+  }
+})
+
+onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -183,6 +229,8 @@ onMounted(fetchAssignment)
               <TableHead>Время</TableHead>
               <TableHead>Статус</TableHead>
               <TableHead>Участники</TableHead>
+              <TableHead>Оценка AI</TableHead>
+              <TableHead>Комментарий AI</TableHead>
               <TableHead class="text-right">Действия</TableHead>
             </TableRow>
           </TableHeader>
@@ -200,6 +248,21 @@ onMounted(fetchAssignment)
               <TableCell>
                 <Badge v-if="sub.is_group_work" variant="secondary">Групповая</Badge>
                 <span class="text-sm text-muted-foreground">{{ formatGroupMembers(sub) }}</span>
+              </TableCell>
+              <TableCell>
+                <Badge
+                  v-if="sub.ai_status === 'done'"
+                  :variant="sub.ai_grade && sub.ai_grade >= 4 ? 'default' : 'destructive'"
+                >
+                  {{ sub.ai_grade }}
+                </Badge>
+                <Badge v-else-if="sub.ai_status === 'pending'" variant="outline">{{ aiStatusText(sub.ai_status) }}</Badge>
+                <Badge v-else-if="sub.ai_status === 'error'" variant="destructive">{{ aiStatusText(sub.ai_status) }}</Badge>
+                <span v-else class="text-muted-foreground">{{ aiStatusText(sub.ai_status) }}</span>
+              </TableCell>
+              <TableCell>
+                <span v-if="sub.ai_feedback" class="text-sm text-muted-foreground">{{ sub.ai_feedback }}</span>
+                <span v-else class="text-sm text-muted-foreground">—</span>
               </TableCell>
               <TableCell class="text-right">
                 <Button variant="outline" size="sm" @click="downloadSingle(sub.id, sub.original_filename)">Скачать</Button>

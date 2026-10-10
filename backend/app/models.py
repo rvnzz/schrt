@@ -58,6 +58,7 @@ class Assignment(Base):
     deadline = Column(DateTime, nullable=True)
     is_hard_deadline = Column(Boolean, default=False)
     allow_group_submissions = Column(Boolean, default=False)
+    brief_md = Column(Text, nullable=True)
     max_file_size_mb = Column(Integer, default=10)
     allowed_extensions = Column(ARRAY(String), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -81,6 +82,9 @@ class Submission(Base):
     is_late = Column(Boolean, default=False)
     is_group_work = Column(Boolean, default=False)
     group_members = Column(JSONB, nullable=True)
+    ai_status = Column(String, default="disabled")
+    ai_grade = Column(Integer, nullable=True)
+    ai_feedback = Column(Text, nullable=True)
 
     assignment = relationship("Assignment", back_populates="submissions")
     student = relationship("Student", back_populates="submissions")
