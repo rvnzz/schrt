@@ -12,7 +12,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background">
+  <div class="flex min-h-screen flex-col bg-background">
     <header class="border-b">
       <div class="container flex h-14 items-center justify-between">
         <router-link to="/" class="font-semibold text-lg">schrt.ru</router-link>
@@ -24,9 +24,22 @@ onMounted(() => {
         </nav>
       </div>
     </header>
-    <main class="container py-6">
+    <main class="container flex-1 py-6">
       <router-view />
     </main>
+    <footer class="border-t py-4">
+      <div class="container text-center text-sm text-muted-foreground">
+        Made with ❤️ by
+        <a
+          href="https://github.com/rvnzz/schrt"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="font-medium underline underline-offset-4 hover:text-foreground"
+        >
+          ravonzz
+        </a>
+      </div>
+    </footer>
     <Toaster position="bottom-right" />
   </div>
 </template>
