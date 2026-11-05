@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowDown, ArrowUp, ArrowUpDown, Search } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileSpreadsheet, Search } from 'lucide-vue-next'
 import { api, getErrorMessage } from '@/lib/api'
+import { triggerDownload } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -69,6 +70,7 @@ const groupId = Number(route.params.id)
 const group = ref<GroupDetail | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const search = ref('')
+const exporting = ref('')
 const source = ref<'all' | 'imported' | 'auto'>('all')
 const sort = ref<{ field: SortField; dir: SortDir }>({ field: 'last_name', dir: 'asc' })
 
@@ -160,6 +162,26 @@ async function fetchGroup() {
   }
 }
 
+async function exportGrades(kind: 'report' | 'grades') {
+  exporting.value = kind
+  const path = kind === 'report'
+    ? `/submissions/groups/${groupId}/report`
+    : `/submissions/groups/${groupId}/grades-csv`
+  const filename =
+    group.value?.name.replace(/\s+/g, '_') || `group_${groupId}`
+  const name = kind === 'report' ? `${filename}_отчёт.xlsx` : `${filename}_оценки.csv`
+
+  try {
+    const response = await api.get(path, { responseType: 'blob' })
+    triggerDownload(response.data, name)
+    toast.success(kind === 'report' ? 'Отчёт группы выгружен' : 'Оценки группы выгружены')
+  } catch (err) {
+    toast.error(getErrorMessage(err))
+  } finally {
+    exporting.value = ''
+  }
+}
+
 async function handleCsvUpload(event: Event) {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
@@ -216,6 +238,16 @@ onMounted(fetchGroup)
         <p class="text-muted-foreground">
           Студентов: {{ group.students.length }} · Заданий: {{ assignmentsCount() }}
         </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <Button variant="outline" :disabled="exporting === 'grades'" @click="exportGrades('grades')">
+          <Download class="mr-2 h-4 w-4" />
+          Оценки группы (CSV)
+        </Button>
+        <Button variant="outline" :disabled="exporting === 'report'" @click="exportGrades('report')">
+          <FileSpreadsheet class="mr-2 h-4 w-4" />
+          Отчёт группы (XLSX)
+        </Button>
       </div>
     </div>
 

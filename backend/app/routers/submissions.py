@@ -8,9 +8,9 @@ from starlette.responses import StreamingResponse
 
 from app.database import get_db
 from app.auth import get_current_teacher
-from app.models import Teacher, Group, Assignment, Submission
+from app.models import Teacher, Group, Student, Assignment, Submission
 from app.services.zip_export import build_submissions_zip
-from app.services.report_export import build_group_report
+from app.services.report_export import build_group_report, build_group_grades_csv
 from app import s3
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -27,6 +27,30 @@ async def get_owned_assignment(assignment_id: int, teacher_id: int, db: AsyncSes
     if assignment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
     return assignment
+
+
+async def get_owned_group_report_data(
+    group_id: int, teacher_id: int, db: AsyncSession
+) -> tuple[Group, list[Student], list[Assignment]]:
+    """Группа со студентами и всеми её заданиями со сдачами — данные для экспорта."""
+    group_result = await db.execute(
+        select(Group)
+        .where(Group.id == group_id, Group.teacher_id == teacher_id)
+        .options(selectinload(Group.students))
+    )
+    group = group_result.scalar_one_or_none()
+    if group is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+    result = await db.execute(
+        select(Assignment)
+        .where(Assignment.group_id == group_id)
+        .order_by(Assignment.created_at)
+        .options(selectinload(Assignment.submissions))
+    )
+    assignments = list(result.scalars().all())
+    students = sorted(group.students, key=lambda s: (s.last_name, s.first_name))
+    return group, students, assignments
 
 
 @router.get("/{submission_id}/download")
@@ -115,24 +139,30 @@ async def group_report(
     db: AsyncSession = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    group_result = await db.execute(
-        select(Group)
-        .where(Group.id == group_id, Group.teacher_id == current_teacher.id)
-        .options(selectinload(Group.students))
-    )
-    group = group_result.scalar_one_or_none()
-    if group is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+    group, students, assignments = await get_owned_group_report_data(group_id, current_teacher.id, db)
 
-    result = await db.execute(
-        select(Assignment)
-        .where(Assignment.group_id == group_id)
-        .options(selectinload(Assignment.submissions))
-    )
-    assignments = result.scalars().all()
-    report_bytes = build_group_report(group.name, group.students, assignments)
+    report_bytes = build_group_report(group.name, students, assignments)
     return StreamingResponse(
         iter([report_bytes]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=group_{group_id}_report.xlsx"},
+    )
+
+
+@router.get("/groups/{group_id}/grades-csv")
+async def group_grades_csv(
+    group_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Оценки всех заданий группы одной таблицей: студент × задание."""
+    group, students, assignments = await get_owned_group_report_data(group_id, current_teacher.id, db)
+
+    csv_bytes = build_group_grades_csv(group.name, students, assignments)
+    return StreamingResponse(
+        iter([csv_bytes]),
+        media_type="text/csv; charset=utf-8-sig",
+        headers={
+            "Content-Disposition": f'attachment; filename="group_{group_id}_grades.csv"',
+        },
     )
