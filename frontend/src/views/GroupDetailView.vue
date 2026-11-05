@@ -20,12 +20,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import { toast } from 'vue-sonner'
 
 interface Student {
   id: number
   first_name: string
   last_name: string
+  is_auto_added: boolean
 }
 
 interface Assignment {
@@ -46,6 +55,19 @@ const route = useRoute()
 const groupId = Number(route.params.id)
 const group = ref<GroupDetail | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+const source = ref<'all' | 'imported' | 'auto'>('all')
+
+const visibleStudents = computed(() => {
+  const students = group.value?.students ?? []
+  if (source.value === 'all') return students
+  return students.filter((student) =>
+    source.value === 'auto' ? student.is_auto_added : !student.is_auto_added
+  )
+})
+
+const autoAddedCount = computed(
+  () => (group.value?.students ?? []).filter((student) => student.is_auto_added).length
+)
 
 const reportUrl = computed(() => `${api.defaults.baseURL}/submissions/groups/${groupId}/report`)
 
@@ -114,13 +136,28 @@ onMounted(fetchGroup)
     <Card>
       <CardHeader>
         <CardTitle>Студенты</CardTitle>
-        <CardDescription>Загрузите список студентов из CSV</CardDescription>
+        <CardDescription>
+          Загрузите список из CSV — или не загружайте: сдающие студенты добавляются в группу автоматически
+        </CardDescription>
       </CardHeader>
       <CardContent class="space-y-4">
         <div class="flex items-end gap-4">
           <div class="grid gap-2">
             <Label for="csv">CSV файл</Label>
             <Input id="csv" type="file" accept=".csv" ref="fileInput" @change="handleCsvUpload" />
+          </div>
+          <div class="grid w-52 gap-2">
+            <Label for="sourceFilter">Кто в списке</Label>
+            <Select v-model="source">
+              <SelectTrigger id="sourceFilter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все ({{ group.students.length }})</SelectItem>
+                <SelectItem value="imported">Из CSV ({{ group.students.length - autoAddedCount }})</SelectItem>
+                <SelectItem value="auto">Из сдач ({{ autoAddedCount }})</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -133,8 +170,13 @@ onMounted(fetchGroup)
             </TableRow>
           </TableHeader>
           <TableBody>
-            <TableRow v-for="student in group.students" :key="student.id">
-              <TableCell>{{ student.last_name }}</TableCell>
+            <TableRow v-for="student in visibleStudents" :key="student.id">
+              <TableCell>
+                <span class="inline-flex items-center gap-2">
+                  {{ student.last_name }}
+                  <Badge v-if="student.is_auto_added" variant="outline" class="text-xs">из сдачи</Badge>
+                </span>
+              </TableCell>
               <TableCell>{{ student.first_name }}</TableCell>
               <TableCell class="text-right">
                 <Button variant="destructive" size="sm" @click="deleteStudent(student.id)">Удалить</Button>

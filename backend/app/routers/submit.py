@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Assignment, Group, Submission
+from app.models import Assignment, Group, Student, Submission
 from app.schemas import SubmitInfo, SubmitParticipant, StudentOut, GroupMember
 from app.config import settings
 from app import s3
@@ -197,8 +197,24 @@ async def submit(
     ai_status = "pending" if (settings.ai_enabled and assignment.brief_md) else "disabled"
 
     created = []
+    auto_added: list[str] = []
     for index, (person, filename, content, content_type) in enumerate(prepared):
-        student = roster.get(_student_key(person.first_name, person.last_name))
+        key = _student_key(person.first_name, person.last_name)
+        student = roster.get(key)
+
+        if student is None:
+            # Список группы пополняется сам: сдающий студент появляется в группе
+            student = Student(
+                first_name=person.first_name.strip(),
+                last_name=person.last_name.strip(),
+                group_id=assignment.group_id,
+                is_auto_added=True,
+            )
+            assignment.group.students.append(student)
+            db.add(student)
+            await db.flush()
+            roster[key] = student
+            auto_added.append(f"{student.last_name} {student.first_name}")
 
         if parsed_participants:
             # Каждый участник получает свою работу, в списке участников — остальные
@@ -245,4 +261,5 @@ async def submit(
         "count": len(created),
         "submitted_at": created[0].submitted_at,
         "is_late": is_late,
+        "auto_added": auto_added,
     }

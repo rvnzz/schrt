@@ -39,6 +39,8 @@ class Student(Base):
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    # Студент появился из сдачи, а не из импорта CSV преподавателя
+    is_auto_added = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     group = relationship("Group", back_populates="students")

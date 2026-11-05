@@ -41,6 +41,7 @@ class StudentOut(BaseModel):
     first_name: str
     last_name: str
     group_id: int
+    is_auto_added: bool = False
     model_config = ConfigDict(from_attributes=True)
 
 

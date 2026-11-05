@@ -21,7 +21,8 @@ const emit = defineEmits<{
 const query = ref('')
 const open = ref(false)
 const wrapper = ref<HTMLElement | null>(null)
-const manual = ref(props.modelValue.student_id === null && !!props.modelValue.first_name)
+// Если списка группы нет — сразу просим ввести имя и фамилию
+const manual = ref(props.students.length === 0 || (props.modelValue.student_id === null && !!props.modelValue.first_name))
 const firstName = ref(props.modelValue.first_name)
 const lastName = ref(props.modelValue.last_name)
 

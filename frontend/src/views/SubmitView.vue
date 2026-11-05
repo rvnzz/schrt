@@ -51,6 +51,7 @@ const info = ref<SubmitInfoData | null>(null)
 const loading = ref(false)
 const success = ref(false)
 const submittedCount = ref(0)
+const autoAdded = ref<string[]>([])
 const isGroupWork = ref(false)
 
 let keySeed = 1
@@ -141,6 +142,9 @@ async function onSubmit() {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     submittedCount.value = response.data?.count ?? participants.length
+    autoAdded.value = response.data?.auto_added ?? []
+    // Обновляем список группы: сдающие студенты уже добавились в него
+    await fetchInfo()
     success.value = true
   } catch (err) {
     toast.error(getErrorMessage(err))
@@ -161,6 +165,7 @@ function filePrecheck(): boolean {
 function resetForm() {
   success.value = false
   submittedCount.value = 0
+  autoAdded.value = []
   isGroupWork.value = false
   rows.value = [createRow()]
 }
@@ -208,6 +213,7 @@ onMounted(fetchInfo)
             Прикрепляйте <span class="font-medium">отдельный файл от каждого студента</span>.
             Нельзя вписывать два имени в одно поле и сдавать одну работу на всех —
             каждый участник сдаёт свой файл под своей фамилией.
+            Если студента нет в списке группы, впишите имя и фамилию — он добавится в список сам.
           </p>
         </div>
 
@@ -215,6 +221,9 @@ onMounted(fetchInfo)
           <p class="font-medium">{{ successLabel }}</p>
           <p class="mt-1 text-muted-foreground">
             {{ submittedCount > 1 ? 'Файлы отправлены преподавателю по каждому студенту.' : 'Файл отправлен преподавателю.' }}
+          </p>
+          <p v-if="autoAdded.length" class="mt-1 text-muted-foreground">
+            {{ autoAdded.join(', ') }} {{ autoAdded.length > 1 ? 'добавлены' : 'добавлен' }} в список группы автоматически.
           </p>
           <Button variant="outline" size="sm" class="mt-3" @click="resetForm">Сдать ещё работу</Button>
         </div>

@@ -2,6 +2,8 @@ export interface Student {
   id: number
   first_name: string
   last_name: string
+  /** Появился из сдачи, а не из импорта CSV */
+  is_auto_added?: boolean
 }
 
 /** Студент, выбранный на странице сдачи: из списка группы или введённый вручную. */
