@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-vue-next'
 import { api, getErrorMessage } from '@/lib/api'
-import { formatDate } from '@/lib/utils'
+import { formatDate, triggerDownload } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -67,7 +68,42 @@ const assignmentId = Number(route.params.id)
 const assignment = ref<AssignmentDetail | null>(null)
 const link = ref('')
 const expandedFeedback = ref<Record<number, boolean>>({})
+type SubmissionSortField = 'last_name' | 'submitted_at' | 'ai_grade' | 'file_size'
+const submissionSort = ref<{ field: SubmissionSortField; dir: 'asc' | 'desc' }>({
+  field: 'last_name',
+  dir: 'asc',
+})
 let pollInterval: number | null = null
+
+const sortedSubmissions = computed(() => {
+  const submissions = [...(assignment.value?.submissions ?? [])]
+  const direction = submissionSort.value.dir === 'asc' ? 1 : -1
+  return submissions.sort((a, b) => {
+    switch (submissionSort.value.field) {
+      case 'submitted_at':
+        return direction * (new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime())
+      case 'ai_grade':
+        return direction * ((a.ai_grade ?? -1) - (b.ai_grade ?? -1) || a.last_name.localeCompare(b.last_name, 'ru'))
+      case 'file_size':
+        return direction * (a.file_size - b.file_size || a.last_name.localeCompare(b.last_name, 'ru'))
+      default:
+        return direction * (a.last_name.localeCompare(b.last_name, 'ru') || a.first_name.localeCompare(b.first_name, 'ru'))
+    }
+  })
+})
+
+function sortBySubmission(field: SubmissionSortField) {
+  if (submissionSort.value.field === field) {
+    submissionSort.value = { field, dir: submissionSort.value.dir === 'asc' ? 'desc' : 'asc' }
+  } else {
+    submissionSort.value = { field, dir: field === 'submitted_at' || field === 'file_size' ? 'desc' : 'asc' }
+  }
+}
+
+function submissionSortIcon(field: SubmissionSortField) {
+  if (submissionSort.value.field !== field) return ArrowUpDown
+  return submissionSort.value.dir === 'asc' ? ArrowUp : ArrowDown
+}
 
 function hasPendingGrading(): boolean {
   return assignment.value?.submissions.some((s) => s.ai_status === 'pending') ?? false
@@ -87,17 +123,6 @@ async function fetchAssignment() {
   } catch (err) {
     toast.error(getErrorMessage(err))
   }
-}
-
-function triggerDownload(blob: Blob, filename: string) {
-  const url = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  window.URL.revokeObjectURL(url)
 }
 
 async function downloadSingle(submissionId: number, filename: string) {
@@ -254,7 +279,12 @@ onUnmounted(stopPolling)
     <Card>
       <CardHeader>
         <div class="flex items-center justify-between gap-2 flex-wrap">
-          <CardTitle>Сданные работы ({{ assignment.submissions.length }})</CardTitle>
+          <div>
+            <CardTitle>Сданные работы ({{ assignment.submissions.length }})</CardTitle>
+            <CardDescription>
+              У каждого студента должен быть свой файл. Если работы сдавали вместе — участники перечислены в колонке «Участники».
+            </CardDescription>
+          </div>
           <div class="flex items-center gap-2">
             <Button
               variant="outline"
@@ -278,20 +308,40 @@ onUnmounted(stopPolling)
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Фамилия</TableHead>
+              <TableHead>
+                <button type="button" class="inline-flex items-center gap-1" @click="sortBySubmission('last_name')">
+                  Фамилия
+                  <component :is="submissionSortIcon('last_name')" class="h-3.5 w-3.5" />
+                </button>
+              </TableHead>
               <TableHead>Имя</TableHead>
               <TableHead>Файл</TableHead>
-              <TableHead>Размер</TableHead>
-              <TableHead>Время</TableHead>
+              <TableHead>
+                <button type="button" class="inline-flex items-center gap-1" @click="sortBySubmission('file_size')">
+                  Размер
+                  <component :is="submissionSortIcon('file_size')" class="h-3.5 w-3.5" />
+                </button>
+              </TableHead>
+              <TableHead>
+                <button type="button" class="inline-flex items-center gap-1" @click="sortBySubmission('submitted_at')">
+                  Время
+                  <component :is="submissionSortIcon('submitted_at')" class="h-3.5 w-3.5" />
+                </button>
+              </TableHead>
               <TableHead>Статус</TableHead>
               <TableHead>Участники</TableHead>
-              <TableHead>Оценка AI</TableHead>
+              <TableHead>
+                <button type="button" class="inline-flex items-center gap-1" @click="sortBySubmission('ai_grade')">
+                  Оценка AI
+                  <component :is="submissionSortIcon('ai_grade')" class="h-3.5 w-3.5" />
+                </button>
+              </TableHead>
               <TableHead>Комментарий AI</TableHead>
               <TableHead class="text-right">Действия</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            <TableRow v-for="sub in assignment.submissions" :key="sub.id">
+            <TableRow v-for="sub in sortedSubmissions" :key="sub.id">
               <TableCell>{{ sub.last_name }}</TableCell>
               <TableCell>{{ sub.first_name }}</TableCell>
               <TableCell>{{ sub.original_filename }}</TableCell>

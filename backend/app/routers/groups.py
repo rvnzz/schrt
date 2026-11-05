@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response
-from sqlalchemy import select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.auth import get_current_teacher
-from app.models import Teacher, Group, Assignment
+from app.models import Teacher, Group, Student, Assignment
 from app.schemas import GroupCreate, GroupOut, GroupDetailOut
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -16,8 +16,25 @@ async def list_groups(
     db: AsyncSession = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    result = await db.execute(select(Group).where(Group.teacher_id == current_teacher.id))
-    return result.scalars().all()
+    result = await db.execute(
+        select(
+            Group,
+            func.count(distinct(Student.id)).label("student_count"),
+            func.count(distinct(Assignment.id)).label("assignment_count"),
+        )
+        .outerjoin(Student, Student.group_id == Group.id)
+        .outerjoin(Assignment, Assignment.group_id == Group.id)
+        .where(Group.teacher_id == current_teacher.id)
+        .group_by(Group.id)
+        .order_by(Group.name)
+    )
+    groups = []
+    for group, student_count, assignment_count in result.all():
+        payload = GroupOut.model_validate(group)
+        payload.student_count = student_count
+        payload.assignment_count = assignment_count
+        groups.append(payload)
+    return groups
 
 
 @router.post("", response_model=GroupOut, status_code=status.HTTP_201_CREATED)
@@ -51,7 +68,11 @@ async def get_group(
     group = result.scalar_one_or_none()
     if group is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
-    return group
+
+    payload = GroupDetailOut.model_validate(group)
+    payload.student_count = len(group.students)
+    payload.assignment_count = len(group.assignments)
+    return payload
 
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)

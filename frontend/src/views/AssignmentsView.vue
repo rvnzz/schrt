@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { ArrowDownUp } from 'lucide-vue-next'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Card,
@@ -47,6 +49,16 @@ interface Assignment {
   allow_group_submissions: boolean
   brief_md: string | null
   max_file_size_mb: number
+  created_at: string
+}
+
+type SortField = 'group' | 'title' | 'deadline' | 'created'
+
+const SORT_LABELS: Record<SortField, string> = {
+  group: 'По группам',
+  title: 'По названию',
+  deadline: 'По дедлайну',
+  created: 'По дате создания',
 }
 
 const assignments = ref<Assignment[]>([])
@@ -54,6 +66,14 @@ const groups = ref<Group[]>([])
 const isOpen = ref(false)
 const loading = ref(false)
 const editingAssignment = ref<Assignment | null>(null)
+const storedSort = localStorage.getItem('assignments.sort')
+const sortField = ref<SortField>(
+  storedSort === 'group' || storedSort === 'title' || storedSort === 'deadline' || storedSort === 'created'
+    ? storedSort
+    : 'group'
+)
+const sortDesc = ref(false)
+const groupFilter = ref<string>('all')
 
 const form = ref({
   title: '',
@@ -178,6 +198,41 @@ function groupName(id: number) {
   return groups.value.find((g) => g.id === id)?.name || '—'
 }
 
+const sortedGroups = computed(() =>
+  [...groups.value].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+)
+
+const visibleAssignments = computed(() => {
+  const direction = sortDesc.value ? -1 : 1
+  const filtered =
+    groupFilter.value === 'all'
+      ? [...assignments.value]
+      : assignments.value.filter((assignment) => assignment.group_id === Number(groupFilter.value))
+
+  return filtered.sort((a, b) => {
+    switch (sortField.value) {
+      case 'title':
+        return direction * a.title.localeCompare(b.title, 'ru')
+      case 'deadline': {
+        const left = a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY
+        const right = b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY
+        return direction * (left - right || groupName(a.group_id).localeCompare(groupName(b.group_id), 'ru'))
+      }
+      case 'created':
+        return direction * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      default:
+        return (
+          direction * (
+            groupName(a.group_id).localeCompare(groupName(b.group_id), 'ru') ||
+            a.title.localeCompare(b.title, 'ru')
+          )
+        )
+    }
+  })
+})
+
+watch(sortField, (value) => localStorage.setItem('assignments.sort', value))
+
 onMounted(fetchData)
 </script>
 
@@ -186,6 +241,43 @@ onMounted(fetchData)
     <div class="flex items-center justify-between">
       <h1 class="text-3xl font-bold">Задания</h1>
       <Button @click="openCreateModal">Создать задание</Button>
+    </div>
+
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="grid w-56 gap-1.5">
+        <Label for="assignmentGroup">Группа</Label>
+        <Select v-model="groupFilter">
+          <SelectTrigger id="assignmentGroup">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все группы</SelectItem>
+            <SelectItem v-for="group in sortedGroups" :key="group.id" :value="String(group.id)">
+              {{ group.name }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="grid w-56 gap-1.5">
+        <Label for="assignmentSort">Сортировка</Label>
+        <Select v-model="sortField">
+          <SelectTrigger id="assignmentSort">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="(label, field) in SORT_LABELS" :key="field" :value="field">
+              {{ label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <Button variant="outline" @click="sortDesc = !sortDesc" :title="sortDesc ? 'Сортировать по возрастанию' : 'Сортировать по убыванию'">
+        <ArrowDownUp class="mr-2 h-4 w-4" />
+        {{ sortDesc ? 'По убыванию' : 'По возрастанию' }}
+      </Button>
+      <p class="text-sm text-muted-foreground">
+        Показано заданий: {{ visibleAssignments.length }} из {{ assignments.length }}
+      </p>
     </div>
 
     <Dialog v-model:open="isOpen">
@@ -210,7 +302,7 @@ onMounted(fetchData)
                   <SelectValue placeholder="Выберите группу" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem v-for="group in groups" :key="group.id" :value="String(group.id)">
+                  <SelectItem v-for="group in sortedGroups" :key="group.id" :value="String(group.id)">
                     {{ group.name }}
                   </SelectItem>
                 </SelectContent>
@@ -247,7 +339,7 @@ onMounted(fetchData)
       </Dialog>
 
     <div class="grid gap-4">
-      <Card v-for="assignment in assignments" :key="assignment.id">
+      <Card v-for="assignment in visibleAssignments" :key="assignment.id">
         <CardHeader>
           <div class="flex items-start justify-between">
             <div>
@@ -263,12 +355,13 @@ onMounted(fetchData)
           </div>
         </CardHeader>
         <CardContent class="space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{{ groupName(assignment.group_id) }}</Badge>
+            <Badge v-if="assignment.allow_group_submissions" variant="outline">Групповая сдача</Badge>
+          </div>
           <p class="text-sm">
             Дедлайн: {{ formatDate(assignment.deadline) }}
             <span v-if="assignment.is_hard_deadline" class="ml-2 text-destructive">(жёсткий)</span>
-          </p>
-          <p class="text-sm">
-            Групповая сдача: {{ assignment.allow_group_submissions ? 'разрешена' : 'нет' }}
           </p>
           <p class="text-sm">Макс. размер: {{ assignment.max_file_size_mb }} МБ</p>
           <Button variant="outline" size="sm" as-child>
@@ -276,6 +369,10 @@ onMounted(fetchData)
           </Button>
         </CardContent>
       </Card>
+
+      <p v-if="!visibleAssignments.length" class="text-sm text-muted-foreground">
+        {{ assignments.length ? 'В выбранной группе пока нет заданий.' : 'Заданий ещё нет — создайте первое.' }}
+      </p>
     </div>
   </div>
 </template>

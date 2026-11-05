@@ -28,6 +28,8 @@ class GroupOut(BaseModel):
     name: str
     teacher_id: int
     created_at: datetime
+    student_count: int = 0
+    assignment_count: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 
