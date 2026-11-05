@@ -1,11 +1,20 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { onClickOutside } from '@vueuse/core'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { Info, Plus, Trash2, Users } from 'lucide-vue-next'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+import {
+  emptyPickedStudent,
+  hasExtraWords,
+  pluralRu,
+  studentFullName,
+  type PickedStudent,
+  type Student,
+} from '@/lib/types'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import {
   Card,
@@ -14,16 +23,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Upload, X } from 'lucide-vue-next'
+import StudentPicker from '@/components/StudentPicker.vue'
+import SubmissionFileDrop from '@/components/SubmissionFileDrop.vue'
 import { toast } from 'vue-sonner'
-
-interface Student {
-  id: number
-  first_name: string
-  last_name: string
-}
 
 interface SubmitInfoData {
   title: string
@@ -37,64 +39,78 @@ interface SubmitInfoData {
   is_closed: boolean
 }
 
+interface WorkRow {
+  key: number
+  student: PickedStudent
+  file: File | null
+}
+
 const route = useRoute()
 const code = route.params.code as string
 const info = ref<SubmitInfoData | null>(null)
-const firstName = ref('')
-const lastName = ref('')
-const file = ref<File | null>(null)
 const loading = ref(false)
 const success = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
-const firstWrapper = ref<HTMLDivElement | null>(null)
-const lastWrapper = ref<HTMLDivElement | null>(null)
-const showFirstSuggestions = ref(false)
-const showLastSuggestions = ref(false)
-const isDragging = ref(false)
+const submittedCount = ref(0)
 const isGroupWork = ref(false)
-const groupMembers = ref<{ first_name: string; last_name: string }[]>([])
 
-function addGroupMember() {
-  groupMembers.value.push({ first_name: '', last_name: '' })
+let keySeed = 1
+
+function createRow(): WorkRow {
+  return { key: keySeed++, student: emptyPickedStudent(), file: null }
 }
 
-function removeGroupMember(index: number) {
-  groupMembers.value.splice(index, 1)
-}
+const rows = ref<WorkRow[]>([createRow()])
 
-function validateGroupMembers(): boolean {
-  if (!isGroupWork.value) return true
-  const valid = groupMembers.value.every(
-    (m) => m.first_name.trim() && m.last_name.trim()
-  )
-  if (!valid) {
-    toast.error('Укажите имя и фамилию всех участников группы')
-    return false
+const grouped = computed(() => info.value?.allow_group_submissions ?? false)
+
+watch(isGroupWork, (value) => {
+  if (value) {
+    if (rows.value.length < 2) rows.value.push(createRow())
+  } else {
+    rows.value = rows.value.slice(0, 1)
   }
-  return true
+})
+
+function addRow() {
+  rows.value.push(createRow())
 }
 
-const firstNameSuggestions = computed(() => {
-  if (!info.value) return []
-  const term = firstName.value.trim().toLowerCase()
-  if (!term) return []
-  return info.value.students.filter((s) => s.first_name.toLowerCase().startsWith(term))
-})
+function removeRow(index: number) {
+  rows.value.splice(index, 1)
+  if (isGroupWork.value && rows.value.length < 2) {
+    isGroupWork.value = false
+  }
+}
 
-const lastNameSuggestions = computed(() => {
-  if (!info.value) return []
-  const term = lastName.value.trim().toLowerCase()
-  if (!term) return []
-  return info.value.students.filter((s) => s.last_name.toLowerCase().startsWith(term))
-})
+function validateRows(): string | null {
+  for (let index = 0; index < rows.value.length; index += 1) {
+    const row = rows.value[index]
+    const position = index + 1
+    const first = row.student.first_name.trim()
+    const last = row.student.last_name.trim()
 
-onClickOutside(firstWrapper, () => {
-  showFirstSuggestions.value = false
-})
+    if (!first || !last) {
+      return `Выберите студента для работы №${position}`
+    }
+    if (hasExtraWords(first) || hasExtraWords(last)) {
+      return `Работа №${position}: имя и фамилия — отдельные поля. Вписывать двух студентов в одно поле не нужно, добавьте их отдельными работами.`
+    }
+    if (!row.file) {
+      return `Прикрепите отдельный файл для ${last} ${first}`
+    }
+  }
 
-onClickOutside(lastWrapper, () => {
-  showLastSuggestions.value = false
-})
+  const seen = new Set<string>()
+  for (const row of rows.value) {
+    const key = `${row.student.first_name.trim().toLowerCase()} ${row.student.last_name.trim().toLowerCase()}`
+    if (seen.has(key)) {
+      return `${studentFullName(row.student)} добавлен дважды — у каждого студента должен быть свой файл`
+    }
+    seen.add(key)
+  }
+
+  return null
+}
 
 async function fetchInfo() {
   try {
@@ -105,84 +121,26 @@ async function fetchInfo() {
   }
 }
 
-function selectStudent(student: Student) {
-  firstName.value = student.first_name
-  lastName.value = student.last_name
-  showFirstSuggestions.value = false
-  showLastSuggestions.value = false
-}
-
-function onFileChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  setFile(target.files?.[0] || null)
-}
-
-function setFile(selected: File | null) {
-  file.value = selected
-}
-
-function handleDragOver(event: DragEvent) {
-  event.preventDefault()
-  isDragging.value = true
-}
-
-function handleDragLeave(event: DragEvent) {
-  event.preventDefault()
-  isDragging.value = false
-}
-
-function handleDrop(event: DragEvent) {
-  event.preventDefault()
-  isDragging.value = false
-  const dropped = event.dataTransfer?.files?.[0]
-  if (dropped) {
-    setFile(dropped)
-  }
-}
-
-function openFilePicker() {
-  fileInput.value?.click()
-}
-
 async function onSubmit() {
-  if (!file.value) {
-    toast.error('Выберите файл')
-    return
-  }
-  if (!firstName.value.trim() || !lastName.value.trim()) {
-    toast.error('Укажите имя и фамилию')
-    return
-  }
-  if (isGroupWork.value && groupMembers.value.length === 0) {
-    toast.error('Добавьте хотя бы одного участника группы')
-    return
-  }
-  if (!validateGroupMembers()) {
-    return
-  }
+  if (!filePrecheck()) return
 
   const formData = new FormData()
-  formData.append('first_name', firstName.value.trim())
-  formData.append('last_name', lastName.value.trim())
+  const participants = rows.value.map((row) => ({
+    first_name: row.student.first_name.trim(),
+    last_name: row.student.last_name.trim(),
+  }))
+  formData.append('first_name', participants[0].first_name)
+  formData.append('last_name', participants[0].last_name)
   formData.append('is_group_work', String(isGroupWork.value))
-  if (isGroupWork.value && groupMembers.value.length > 0) {
-    formData.append(
-      'group_members',
-      JSON.stringify(
-        groupMembers.value.map((m) => ({
-          first_name: m.first_name.trim(),
-          last_name: m.last_name.trim(),
-        }))
-      )
-    )
-  }
-  formData.append('file', file.value)
+  formData.append('participants', JSON.stringify(participants))
+  rows.value.forEach((row) => formData.append('files', row.file as File))
 
   loading.value = true
   try {
-    await api.post(`/submit/${code}`, formData, {
+    const response = await api.post(`/submit/${code}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
+    submittedCount.value = response.data?.count ?? participants.length
     success.value = true
   } catch (err) {
     toast.error(getErrorMessage(err))
@@ -191,12 +149,41 @@ async function onSubmit() {
   }
 }
 
+function filePrecheck(): boolean {
+  const error = validateRows()
+  if (error) {
+    toast.error(error)
+    return false
+  }
+  return true
+}
+
+function resetForm() {
+  success.value = false
+  submittedCount.value = 0
+  isGroupWork.value = false
+  rows.value = [createRow()]
+}
+
+const submitLabel = computed(() => {
+  if (loading.value) return 'Отправка...'
+  if (!isGroupWork.value) return 'Сдать работу'
+  return `Сдать ${rows.value.length} ${pluralRu(rows.value.length, 'работу', 'работы', 'работ')}`
+})
+
+const successLabel = computed(() => {
+  if (submittedCount.value > 1) {
+    return `Готово: сдано ${submittedCount.value} ${pluralRu(submittedCount.value, 'работа', 'работы', 'работ')}`
+  }
+  return 'Работа успешно сдана!'
+})
+
 onMounted(fetchInfo)
 </script>
 
 <template>
   <div class="flex items-center justify-center py-12">
-    <Card v-if="info" class="w-full max-w-md">
+    <Card v-if="info" class="w-full max-w-2xl">
       <CardHeader>
         <CardTitle>{{ info.title }}</CardTitle>
         <CardDescription v-if="info.description">{{ info.description }}</CardDescription>
@@ -208,93 +195,92 @@ onMounted(fetchInfo)
             <span v-if="info.is_hard_deadline" class="ml-2 text-destructive">(жёсткий)</span>
           </p>
           <p>Макс. размер файла: {{ info.max_file_size_mb }} МБ</p>
+          <p v-if="info.allowed_extensions?.length">Допустимые форматы: {{ info.allowed_extensions.join(', ') }}</p>
         </div>
 
         <Badge v-if="info.is_closed" variant="destructive">Приём работ закрыт</Badge>
 
-        <div v-if="success" class="rounded-md bg-green-50 p-4 text-green-800">
-          Работа успешно сдана!
+        <div
+          class="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-sm"
+        >
+          <Info class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <p>
+            Прикрепляйте <span class="font-medium">отдельный файл от каждого студента</span>.
+            Нельзя вписывать два имени в одно поле и сдавать одну работу на всех —
+            каждый участник сдаёт свой файл под своей фамилией.
+          </p>
         </div>
 
-        <form v-else @submit.prevent="onSubmit" class="space-y-4">
-          <div ref="firstWrapper" class="grid gap-2 relative">
-            <Label for="firstName">Имя</Label>
-            <Input id="firstName" v-model="firstName" autocomplete="off" @focus="showFirstSuggestions = true" />
-            <ul v-if="showFirstSuggestions && firstNameSuggestions.length" class="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-sm">
-              <li
-                v-for="student in firstNameSuggestions"
-                :key="student.id"
-                class="cursor-pointer px-3 py-2 text-sm hover:bg-accent"
-                @mousedown.prevent="selectStudent(student)"
+        <div v-if="success" class="rounded-md border border-primary/30 bg-primary/10 p-4 text-sm text-primary">
+          <p class="font-medium">{{ successLabel }}</p>
+          <p class="mt-1 text-muted-foreground">
+            {{ submittedCount > 1 ? 'Файлы отправлены преподавателю по каждому студенту.' : 'Файл отправлен преподавателю.' }}
+          </p>
+          <Button variant="outline" size="sm" class="mt-3" @click="resetForm">Сдать ещё работу</Button>
+        </div>
+
+        <form v-else @submit.prevent="onSubmit" class="space-y-5">
+          <div v-for="(row, index) in rows" :key="row.key" class="space-y-3 rounded-md border p-3">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-sm font-medium">
+                Работа №{{ index + 1 }}
+                <span v-if="index === 0" class="text-muted-foreground">— ваша</span>
+                <span v-else class="text-muted-foreground">— участник</span>
+              </p>
+              <Button
+                v-if="index > 0"
+                type="button"
+                variant="ghost"
+                size="sm"
+                @click="removeRow(index)"
               >
-                {{ student.first_name }} {{ student.last_name }}
-              </li>
-            </ul>
-          </div>
-
-          <div ref="lastWrapper" class="grid gap-2 relative">
-            <Label for="lastName">Фамилия</Label>
-            <Input id="lastName" v-model="lastName" autocomplete="off" @focus="showLastSuggestions = true" />
-            <ul v-if="showLastSuggestions && lastNameSuggestions.length" class="absolute top-full z-10 mt-1 w-full rounded-md border bg-popover shadow-sm">
-              <li
-                v-for="student in lastNameSuggestions"
-                :key="student.id"
-                class="cursor-pointer px-3 py-2 text-sm hover:bg-accent"
-                @mousedown.prevent="selectStudent(student)"
-              >
-                {{ student.last_name }} {{ student.first_name }}
-              </li>
-            </ul>
-          </div>
-
-          <div v-if="info.allow_group_submissions" class="flex items-center gap-2">
-            <Checkbox id="groupWork" v-model="isGroupWork" />
-            <Label for="groupWork" class="text-sm font-normal">Делал в группе</Label>
-          </div>
-
-          <div v-if="info.allow_group_submissions && isGroupWork" class="space-y-3 rounded-md border p-3">
-            <div class="flex items-center justify-between">
-              <Label class="text-sm font-medium">Участники группы</Label>
-              <Button type="button" variant="outline" size="sm" @click="addGroupMember">Добавить участника</Button>
-            </div>
-            <div v-for="(member, index) in groupMembers" :key="index" class="grid grid-cols-[1fr_1fr_auto] gap-2">
-              <Input v-model="member.first_name" placeholder="Имя" />
-              <Input v-model="member.last_name" placeholder="Фамилия" />
-              <Button type="button" variant="ghost" size="icon" @click="removeGroupMember(index)">
-                <X class="h-4 w-4" />
+                <Trash2 class="mr-1 h-3.5 w-3.5" />
+                Убрать
               </Button>
             </div>
-            <p v-if="groupMembers.length === 0" class="text-sm text-muted-foreground">Нет добавленных участников</p>
+
+            <StudentPicker
+              v-model="row.student"
+              :students="info.students"
+              :input-id="`student-${row.key}`"
+            />
+
+            <SubmissionFileDrop
+              v-model="row.file"
+              :input-id="`file-${row.key}`"
+              :max-file-size-mb="info.max_file_size_mb"
+              :allowed-extensions="info.allowed_extensions"
+            />
           </div>
 
-          <div class="grid gap-2">
-            <Label for="file">Файл</Label>
-            <div
-              role="button"
-              tabindex="0"
-              class="flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-input bg-background px-4 py-6 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              :class="{ 'border-primary bg-primary/5 text-primary': isDragging }"
-              @dragover="handleDragOver"
-              @dragleave="handleDragLeave"
-              @drop="handleDrop"
-              @click="openFilePicker"
-              @keydown.enter="openFilePicker"
-            >
-              <template v-if="file">
-                <p class="font-medium text-foreground">{{ file.name }}</p>
-                <p class="text-xs">{{ (file.size / 1024 / 1024).toFixed(2) }} МБ</p>
-              </template>
-              <template v-else>
-                <Upload class="mb-2 h-8 w-8" />
-                <p>Перетащите файл сюда или нажмите для выбора</p>
-                <p class="text-xs">Максимум {{ info.max_file_size_mb }} МБ</p>
-              </template>
+          <template v-if="grouped">
+            <div class="flex items-center gap-2">
+              <Checkbox id="groupWork" v-model="isGroupWork" />
+              <Label for="groupWork" class="text-sm font-normal">
+                Делали работу вместе — сдаём файлы каждого участника
+              </Label>
             </div>
-            <input id="file" type="file" class="hidden" ref="fileInput" @change="onFileChange" />
-          </div>
+
+            <div v-if="isGroupWork" class="space-y-2 rounded-md border border-dashed p-3">
+              <div class="flex items-center justify-between gap-2">
+                <p class="flex items-center gap-2 text-sm font-medium">
+                  <Users class="h-4 w-4 text-muted-foreground" />
+                  Участников: {{ rows.length }}
+                </p>
+                <Button type="button" variant="outline" size="sm" @click="addRow">
+                  <Plus class="mr-1 h-4 w-4" />
+                  Добавить студента
+                </Button>
+              </div>
+              <p class="text-xs text-muted-foreground">
+                Выберите каждого студента из списка группы и прикрепите его файл.
+                Один файл на двоих преподаватель не увидит в отчёте.
+              </p>
+            </div>
+          </template>
 
           <Button type="submit" class="w-full" :disabled="loading || info.is_closed">
-            {{ loading ? 'Отправка...' : 'Сдать работу' }}
+            {{ submitLabel }}
           </Button>
         </form>
       </CardContent>

@@ -103,6 +103,13 @@ class GroupMember(BaseModel):
     last_name: str
 
 
+class SubmitParticipant(BaseModel):
+    """Участник сдачи: каждый участник прикладывает свой отдельный файл."""
+
+    first_name: str
+    last_name: str
+
+
 class SubmissionOut(BaseModel):
     id: int
     assignment_id: int
