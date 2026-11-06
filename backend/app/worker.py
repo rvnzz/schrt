@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select
@@ -19,8 +20,12 @@ logger = logging.getLogger(__name__)
 
 async def grade_one(session: AsyncSession, submission: Submission) -> None:
     assignment = submission.assignment
+    submission.ai_attempts = (submission.ai_attempts or 0) + 1
+
     if not assignment or not assignment.brief_md:
         submission.ai_status = "disabled"
+        submission.ai_error = "У задания нет текста для AI"
+        submission.ai_checked_at = datetime.utcnow()
         await session.commit()
         return
 
@@ -47,12 +52,16 @@ async def grade_one(session: AsyncSession, submission: Submission) -> None:
         submission.ai_grade = result["grade"]
         submission.ai_feedback = result["feedback"]
         submission.ai_status = "done"
+        submission.ai_error = None
+        submission.ai_checked_at = datetime.utcnow()
         await session.commit()
         logger.info("Submission %s graded: %s", submission.id, result["grade"])
     except Exception as exc:
         logger.exception("Failed to grade submission %s", submission.id)
         submission.ai_status = "error"
-        submission.ai_feedback = str(exc)[:500]
+        # Комментарий модели не затираем: причина живёт в ai_error
+        submission.ai_error = str(exc)[:500]
+        submission.ai_checked_at = datetime.utcnow()
         await session.commit()
 
 

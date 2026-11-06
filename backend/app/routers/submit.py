@@ -195,6 +195,13 @@ async def submit(
     }
 
     ai_status = "pending" if (settings.ai_enabled and assignment.brief_md) else "disabled"
+    ai_error = None
+    if ai_status == "disabled":
+        ai_error = (
+            "AI-проверка не настроена (нет OPENCODE_GO_API_KEY)"
+            if not settings.ai_enabled
+            else "У задания нет текста для AI"
+        )
 
     created = []
     auto_added: list[str] = []
@@ -232,15 +239,15 @@ async def submit(
                 [member.model_dump() for member in legacy_members] if legacy_members else None
             )
 
-        key = s3.generate_file_key(assignment.code, filename)
-        s3.upload_file(content, key, content_type)
+        object_key = s3.generate_file_key(assignment.code, filename)
+        s3.upload_file(content, object_key, content_type)
 
         submission = Submission(
             assignment_id=assignment.id,
             student_id=student.id if student else None,
             first_name=person.first_name.strip(),
             last_name=person.last_name.strip(),
-            file_key=key,
+            file_key=object_key,
             original_filename=filename,
             file_size=len(content),
             submitted_at=now,
@@ -248,6 +255,8 @@ async def submit(
             is_group_work=is_group_work,
             group_members=group_members_data,
             ai_status=ai_status,
+            ai_error=ai_error,
+            ai_attempts=0,
         )
         db.add(submission)
         created.append(submission)

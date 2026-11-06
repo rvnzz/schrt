@@ -157,7 +157,7 @@ async def grade_all_submissions(
             Submission.assignment_id == assignment_id,
             Submission.ai_status.in_(["disabled", "error"]),
         )
-        .values(ai_status="pending", ai_grade=None, ai_feedback=None)
+        .values(ai_status="pending", ai_grade=None, ai_feedback=None, ai_error=None)
     )
     await db.commit()
     return {"success": True}
@@ -191,8 +191,11 @@ async def export_grades_csv(
         "Групповая",
         "Участники",
         "Статус AI",
+        "Попыток AI",
+        "Время проверки",
         "Оценка AI",
         "Комментарий AI",
+        "Ошибка AI",
     ])
 
     for sub in assignment.submissions:
@@ -209,8 +212,11 @@ async def export_grades_csv(
             "Да" if sub.is_group_work else "Нет",
             members,
             sub.ai_status,
+            sub.ai_attempts or 0,
+            sub.ai_checked_at.isoformat() if sub.ai_checked_at else "",
             sub.ai_grade if sub.ai_grade is not None else "",
             sub.ai_feedback or "",
+            sub.ai_error or "",
         ])
 
     csv_bytes = output.getvalue().encode("utf-8-sig")

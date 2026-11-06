@@ -90,6 +90,32 @@ def build_group_report(
 
     _style_sheet(grades_ws, bold_first_row=True)
 
+    # --- Лист 3: проблемы AI-проверки ---
+    errors_ws = wb.create_sheet("Ошибки AI")
+    errors_ws.append(["Задание", "Фамилия", "Имя", "Файл", "Статус", "Попыток", "Причина"])
+    for assignment, _ in per_assignment:
+        for submission in assignment.submissions or []:
+            if submission.ai_status not in ("error", "disabled") and not submission.ai_error:
+                continue
+            if submission.ai_status == "done":
+                continue
+            errors_ws.append(
+                [
+                    assignment.title,
+                    submission.last_name,
+                    submission.first_name,
+                    submission.original_filename,
+                    submission.ai_status,
+                    submission.ai_attempts or 0,
+                    submission.ai_error
+                    or (submission.ai_feedback if submission.ai_status == "error" else "")
+                    or "",
+                ]
+            )
+    if errors_ws.max_row == 1:
+        errors_ws.append(["Проблем AI-проверки нет"] + [""] * 6)
+    _style_sheet(errors_ws, bold_first_row=True)
+
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)

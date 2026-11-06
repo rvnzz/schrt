@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import FileResponse
 
-from app.routers import auth, groups, students, assignments, submissions, submit
+from app.routers import auth, groups, students, assignments, submissions, submit, ai
 
 
 STATIC_DIR = os.environ.get("STATIC_DIR", "/app/static")
@@ -46,6 +46,7 @@ app.include_router(students.router, prefix="/api")
 app.include_router(assignments.router, prefix="/api")
 app.include_router(submissions.router, prefix="/api")
 app.include_router(submit.router, prefix="/api")
+app.include_router(ai.router, prefix="/api")
 
 
 @app.get("/health")

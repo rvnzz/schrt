@@ -87,6 +87,10 @@ class Submission(Base):
     ai_status = Column(String, default="disabled")
     ai_grade = Column(Integer, nullable=True)
     ai_feedback = Column(Text, nullable=True)
+    # Почему проверка не прошла — отдельно от комментария модели
+    ai_error = Column(Text, nullable=True)
+    ai_attempts = Column(Integer, default=0, nullable=False)
+    ai_checked_at = Column(DateTime, nullable=True)
 
     assignment = relationship("Assignment", back_populates="submissions")
     student = relationship("Student", back_populates="submissions")
