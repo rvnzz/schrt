@@ -5,6 +5,7 @@ import GroupsView from '@/views/GroupsView.vue'
 import GroupDetailView from '@/views/GroupDetailView.vue'
 import AssignmentsView from '@/views/AssignmentsView.vue'
 import AssignmentDetailView from '@/views/AssignmentDetailView.vue'
+import AIDashboardView from '@/views/AIDashboardView.vue'
 import SubmitView from '@/views/SubmitView.vue'
 
 const router = createRouter({
@@ -16,6 +17,7 @@ const router = createRouter({
     { path: '/groups/:id', name: 'group-detail', component: GroupDetailView },
     { path: '/assignments', name: 'assignments', component: AssignmentsView },
     { path: '/assignments/:id', name: 'assignment-detail', component: AssignmentDetailView },
+    { path: '/grading', name: 'grading', component: AIDashboardView },
     { path: '/s/:code', name: 'submit', component: SubmitView, meta: { public: true } },
   ],
 })

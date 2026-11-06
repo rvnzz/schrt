@@ -248,6 +248,9 @@ onMounted(fetchGroup)
           <FileSpreadsheet class="mr-2 h-4 w-4" />
           Отчёт группы (XLSX)
         </Button>
+        <Button variant="outline" as-child>
+          <router-link to="/grading">AI-проверка</router-link>
+        </Button>
       </div>
     </div>
 

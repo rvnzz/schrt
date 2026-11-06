@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import AssignmentBriefDialog from '@/components/AssignmentBriefDialog.vue'
 import { toast } from 'vue-sonner'
 
 interface Group {
@@ -46,6 +47,8 @@ interface Submission {
   ai_status: string
   ai_grade: number | null
   ai_feedback: string | null
+  ai_error: string | null
+  ai_attempts: number
 }
 
 interface AssignmentDetail {
@@ -68,6 +71,7 @@ const assignmentId = Number(route.params.id)
 const assignment = ref<AssignmentDetail | null>(null)
 const link = ref('')
 const expandedFeedback = ref<Record<number, boolean>>({})
+const briefOpen = ref(false)
 type SubmissionSortField = 'last_name' | 'submitted_at' | 'ai_grade' | 'file_size'
 const submissionSort = ref<{ field: SubmissionSortField; dir: 'asc' | 'desc' }>({
   field: 'last_name',
@@ -148,6 +152,11 @@ async function downloadAll() {
 }
 
 async function gradeAll() {
+  if (!assignment.value?.brief_md) {
+    // Без текста задания проверять нечем — сразу предлагаем его добавить
+    briefOpen.value = true
+    return
+  }
   try {
     await api.post(`/assignments/${assignmentId}/grade-all`)
     toast.success('Проверка всех работ запущена')
@@ -245,7 +254,12 @@ onUnmounted(stopPolling)
         <h1 class="text-3xl font-bold">{{ assignment.title }}</h1>
         <p class="text-muted-foreground">Группа: {{ assignment.group.name }}</p>
       </div>
-      <Button variant="outline" @click="downloadAll">Скачать все работы</Button>
+      <div class="flex flex-wrap gap-2">
+        <Button variant="outline" as-child>
+          <router-link to="/grading">Проблемы AI-проверки</router-link>
+        </Button>
+        <Button variant="outline" @click="downloadAll">Скачать все работы</Button>
+      </div>
     </div>
 
     <Card>
@@ -286,13 +300,8 @@ onUnmounted(stopPolling)
             </CardDescription>
           </div>
           <div class="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              @click="gradeAll"
-              :disabled="!assignment.brief_md"
-            >
-              Проверить все работы AI
+            <Button variant="outline" size="sm" @click="gradeAll">
+              {{ assignment.brief_md ? 'Проверить все работы AI' : 'Добавить текст задания и проверить' }}
             </Button>
             <Button
               variant="outline"
@@ -367,7 +376,13 @@ onUnmounted(stopPolling)
                 <span v-else class="text-muted-foreground">{{ aiStatusText(sub.ai_status) }}</span>
               </TableCell>
               <TableCell>
-                <div v-if="sub.ai_feedback" class="max-w-xs">
+                <div v-if="sub.ai_status === 'error' && sub.ai_error" class="max-w-xs">
+                  <p class="text-xs text-destructive">{{ sub.ai_error }}</p>
+                  <p v-if="sub.ai_attempts" class="mt-1 text-xs text-muted-foreground">
+                    попыток: {{ sub.ai_attempts }}
+                  </p>
+                </div>
+                <div v-else-if="sub.ai_feedback" class="max-w-xs">
                   <div
                     :class="[
                       'text-sm text-muted-foreground',
@@ -397,5 +412,12 @@ onUnmounted(stopPolling)
         </Table>
       </CardContent>
     </Card>
+
+    <AssignmentBriefDialog
+      v-model:open="briefOpen"
+      :assignment-id="assignmentId"
+      :assignment-title="assignment.title"
+      @saved="fetchAssignment()"
+    />
   </div>
 </template>

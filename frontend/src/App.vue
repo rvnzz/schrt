@@ -48,6 +48,7 @@ onMounted(() => {
           <nav v-if="auth.token" class="flex items-center gap-4">
             <router-link to="/groups" class="text-sm text-muted-foreground hover:text-foreground">Группы</router-link>
             <router-link to="/assignments" class="text-sm text-muted-foreground hover:text-foreground">Задания</router-link>
+            <router-link to="/grading" class="text-sm text-muted-foreground hover:text-foreground">AI-проверка</router-link>
             <span class="text-sm text-muted-foreground">{{ auth.teacher?.username }}</span>
             <Button variant="outline" size="sm" @click="auth.logout">Выйти</Button>
           </nav>
