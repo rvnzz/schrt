@@ -15,9 +15,11 @@ from app.services.ai_overview import (
     DONE,
     ERROR,
     KIND_LABELS,
+    LOW_GRADE,
     MANUAL,
     MISSING_EVIDENCE_SCAN_LIMIT,
     build_overview,
+    suspect_missing_evidence,
 )
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -112,7 +114,8 @@ async def enqueue(
         if exists.scalar_one_or_none() is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
-    # Для «не найдено материалов» берём уже проверенные работы — их перечитывает модель
+    # «AI занизил из-за недостающих материалов» — берём уже оценённые работы и
+    # перечитываем их новым, более мягким промптом
     if data.scope == SCOPE_MISSING_EVIDENCE:
         statuses = [DONE]
     elif data.scope == SCOPE_ALL_ERRORS:
@@ -143,7 +146,11 @@ async def enqueue(
     elif data.assignment_id is not None:
         query = query.where(Assignment.id == data.assignment_id)
     elif data.scope == SCOPE_MISSING_EVIDENCE:
-        query = query.limit(MISSING_EVIDENCE_SCAN_LIMIT)
+        # Только заниженные оценки: low-grade + жалоба на материалы ищет предикат
+        query = query.where(
+            Submission.ai_grade.is_not(None),
+            Submission.ai_grade <= LOW_GRADE,
+        ).limit(MISSING_EVIDENCE_SCAN_LIMIT)
 
     result = await db.execute(query)
     candidates = list(result.scalars().all())
@@ -154,9 +161,7 @@ async def enqueue(
         if not submission.assignment.brief_md:
             skipped_no_brief += 1
             continue
-        if data.scope == SCOPE_MISSING_EVIDENCE and not looks_like_missing_evidence(
-            submission.ai_feedback or ""
-        ):
+        if data.scope == SCOPE_MISSING_EVIDENCE and not suspect_missing_evidence(submission):
             continue
         queueable.append(submission)
 

@@ -7,7 +7,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from app.services.ai_evidence import missing_evidence_hints
+from app.services.ai_evidence import looks_like_missing_evidence, missing_evidence_hints
 
 DONE = "done"
 PENDING = "pending"
@@ -45,9 +45,20 @@ KIND_KEYS = (ERROR, MANUAL, STALE_PENDING, NO_BRIEF, NOT_QUEUED, AI_OFF)
 
 LOW_GRADE = 3
 
-# Строки `done`, в которых модель пожаловалась на недостающие материалы:
-# их стоит перепроверить по новому промпту одной кнопкой
+# Строки `done`, в которых модель пожаловалась на недостающие материалы И поставила
+# за это низкую оценку: их стоит перепроверить по новому промпту одной кнопкой.
+# Work на 4–5 с безобидной ремаркой «не хватает скриншота этапа» не трогаем.
 MISSING_EVIDENCE_SCAN_LIMIT = 300
+
+
+def suspect_missing_evidence(submission: Any) -> bool:
+    """Кандидат на перепроверку: оценён низко и в комментарии жалоба на материалы."""
+    if (submission.ai_status or "") != DONE:
+        return False
+    grade = submission.ai_grade
+    if grade is None or grade > LOW_GRADE:
+        return False
+    return looks_like_missing_evidence(submission.ai_feedback or "")
 
 
 def _reason(submission: Any) -> str:
@@ -198,9 +209,9 @@ def build_overview(
                     }
                 )
 
-            # done-работа, где модель пожаловалась на недостающие материалы:
-            # оценка опубликована по неполной работе, её стоит перепроверить
-            if status == DONE:
+            # done-работа, где модель пожаловалась на недостающие материалы и снизила
+            # за это оценку: её стоит перепроверить новым промптом
+            if suspect_missing_evidence(submission):
                 hints = missing_evidence_hints(submission.ai_feedback or "")
                 if hints:
                     suspects.append(

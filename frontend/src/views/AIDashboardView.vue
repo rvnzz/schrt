@@ -90,7 +90,7 @@ const cards = computed(() => {
       key: 'manual_review',
       label: 'Нужна проверка',
       value: data.problems_by_kind.manual_review ?? 0,
-      hint: 'AI не нашёл скриншоты или файл не читается',
+      hint: 'проверять нечего: нет обязательных материалов',
       kind: 'manual_review' as AiProblemKind,
     },
     {
@@ -330,11 +330,12 @@ onUnmounted(stopPolling)
       <CardHeader>
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <CardTitle>AI что-то не нашёл в {{ missingEvidence.count }} проверенных работах</CardTitle>
+            <CardTitle>AI занизил оценку в {{ missingEvidence.count }} работах из-за недостающих скриншотов</CardTitle>
             <CardDescription>
-              Модель поставила оценку и одновременно написала, что скриншотов или изображений не
-              хватает. Прогоните такие работы заново: теперь недостающие материалы уходят на ручную
-              проверку без оценки
+              Это работы на 2–3, где модель поставила оценку и одновременно написала, что
+              скриншотов или изображений не хватает. Прогоните их заново: мягкий промпт не будет
+              придираться к деталям, а если проверять действительно нечего — работа уйдёт на
+              ручную проверку без оценки
             </CardDescription>
           </div>
           <Button :disabled="busy === 'evidence'" @click="recheckMissingEvidence">

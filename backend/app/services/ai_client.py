@@ -116,8 +116,12 @@ def _manual_verdict(parsed: Dict[str, Any], feedback: str) -> bool:
         elif isinstance(flag, bool) and flag:
             return True
 
-    # Ответ по старому формату, где вердикта нет: жалоба на отсутствие скриншотов
-    return bool(missing_evidence_hints(feedback, limit=1))
+    # Ответ по старому формату, где вердикта нет: считаем отказом только жалобу без
+    # оценки. Иначе доброжелательное «не хватает скриншота этапа 4» в прокомментированной
+    # оценке уводило бы к человеку каждую вторую работу.
+    if parsed.get("grade") is None:
+        return bool(missing_evidence_hints(feedback, limit=1))
+    return False
 
 
 def _parse_response(parsed: Dict[str, Any]) -> Dict[str, Any]:
