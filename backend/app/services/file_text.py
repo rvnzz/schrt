@@ -19,6 +19,14 @@ TEXT_EXTENSIONS = {
     "cs", "go", "rs", "rb", "php", "html", "css", "sql", "sh",
 }
 
+# Форматы, которые сначала отдаём Tika: у python-ридеров нет читателя для старых
+# бинарных документов, а у Tika есть. Чистый текст и отдельные картинки отправляем
+# прямо в модель — round-trip через sidecar им ничего не добавит.
+TIKA_FORMATS = {
+    "doc", "docx", "odt", "rtf", "wpd", "pages", "key", "numbers",
+    "xls", "xlsx", "ods", "ppt", "pptx", "odp", "pdf",
+}
+
 
 @dataclass
 class ExtractedContent:
@@ -36,7 +44,7 @@ def _read_text_bytes(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def _resize_image(data: bytes, max_width: int = 1280) -> bytes:
+def resize_image(data: bytes, max_width: int = 1280) -> bytes:
     try:
         img = Image.open(io.BytesIO(data))
         img = img.convert("RGB") if img.mode in ("RGBA", "P") else img
@@ -77,7 +85,7 @@ def _collect_images(
             notes.append(f"Пропущено изображение {label} неподдерживаемого формата: {name}")
             continue
         try:
-            resized = _resize_image(zf.read(name))
+            resized = resize_image(zf.read(name))
             images.append(("image/png", _image_to_base64(resized)))
         except Exception as exc:
             notes.append(f"Не удалось обработать изображение {name}: {exc}")
@@ -248,7 +256,7 @@ def _docx_images_from_package(document: Document) -> Tuple[List[Tuple[str, str]]
             )
             continue
         try:
-            resized = _resize_image(part.blob)
+            resized = resize_image(part.blob)
             images.append(("image/png", _image_to_base64(resized)))
         except Exception as exc:
             notes.append(f"Не удалось обработать изображение {part.partname}: {exc}")
@@ -332,7 +340,7 @@ def _extract_pdf(content: bytes) -> ExtractedContent:
             try:
                 for image in page.images:
                     try:
-                        resized = _resize_image(image.data)
+                        resized = resize_image(image.data)
                         images.append(("image/png", _image_to_base64(resized)))
                     except Exception as exc:
                         notes.append(f"Не удалось обработать изображение pdf: {exc}")
@@ -368,6 +376,18 @@ def extract_file(key: str, original_filename: str) -> ExtractedContent:
     data = s3.get_object_bytes(key)
     ext = original_filename.split(".")[-1].lower() if "." in original_filename else ""
 
+    # Документы сначала отдаём Tika: она читает и старые форматы (.doc, rtf), и
+    # нестандартную раскладку пакета. Если sidecar выключен или не ответил —
+    # дальше идут штатные python-ридеры, как работали без Tika.
+    if ext in TIKA_FORMATS:
+        # импорт внутри функции: tika_client читает IMAGE_EXTENSIONS отсюда,
+        # на уровне модуля получился бы цикл
+        from app.services import tika_client
+
+        extracted = tika_client.extract(data, original_filename)
+        if extracted is not None:
+            return extracted
+
     if ext in ("docx", "doc", "odt"):
         return _extract_docx(data)
     if ext == "pdf":
@@ -376,7 +396,7 @@ def extract_file(key: str, original_filename: str) -> ExtractedContent:
         return _extract_xlsx(data)
     if ext in IMAGE_EXTENSIONS:
         try:
-            resized = _resize_image(data)
+            resized = resize_image(data)
             return ExtractedContent(
                 text="",
                 images_base64=[("image/png", _image_to_base64(resized))],

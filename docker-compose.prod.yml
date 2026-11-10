@@ -42,6 +42,18 @@ services:
       exit 0;
       "
 
+  tika:
+    image: ${TIKA_IMAGE:-apache/tika:latest}
+    # Sidecar для извлечения содержимого: старые .doc, rtf, нестандартная раскладка
+    # docx-пакетов. Наружу не публикуем: у Tika нет аутентификации, она для доверенных
+    # callers из внутренней сети. Для OCR сканов — apache/tika:latest-full.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9998'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
   app:
     image: ${APP_IMAGE:-ghcr.io/rvnzz/schrt:main}
     environment:
@@ -62,6 +74,7 @@ services:
       OPENCODE_GO_MODEL: ${OPENCODE_GO_MODEL:-glm-5.3-flash}
       WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
       AI_MAX_IMAGES: ${AI_MAX_IMAGES:-10}
+      TIKA_URL: ${TIKA_URL:-http://tika:9998}
     ports:
       - "${APP_PORT:-8000}:8000"
     depends_on:
@@ -69,6 +82,8 @@ services:
         condition: service_healthy
       createbuckets:
         condition: service_completed_successfully
+      tika:
+        condition: service_healthy
 
   ai-grader:
     image: ${APP_IMAGE:-ghcr.io/rvnzz/schrt:main}
@@ -85,11 +100,14 @@ services:
       OPENCODE_GO_MODEL: ${OPENCODE_GO_MODEL:-glm-5.3-flash}
       WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
       AI_MAX_IMAGES: ${AI_MAX_IMAGES:-10}
+      TIKA_URL: ${TIKA_URL:-http://tika:9998}
     depends_on:
       postgres:
         condition: service_healthy
       createbuckets:
         condition: service_completed_successfully
+      tika:
+        condition: service_healthy
 
 volumes:
   postgres_data:

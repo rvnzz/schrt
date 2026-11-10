@@ -1,3 +1,4 @@
+import re
 from typing import List, Optional
 
 from app.services.file_text import ExtractedContent
@@ -27,6 +28,17 @@ def build_grading_prompt(
         )
 
     notes_text = "\n".join(f"- {n}" for n in extracted.notes) if extracted.notes else "нет"
+
+    # Tika оставляет в тексте метки вида ![](embedded:image3.png): они показывают,
+    # к какому пункту работы относится скриншот, и порядок картинок тот же
+    inline_refs = len(re.findall(r"!\[\]\(embedded:", extracted.text or ""))
+    refs_note = (
+        f"\nВ тексте работы есть метки вида `embedded:image3.png` (всего {inline_refs}): каждая "
+        "показывает, к какому пункту относится скриншот. Изображения приложены в том же "
+        "порядке, что и эти метки.\n"
+        if inline_refs
+        else ""
+    )
 
     total_images = len(extracted.images_base64)
     sent_images = total_images if images_sent is None else min(images_sent, total_images)
@@ -58,7 +70,7 @@ def build_grading_prompt(
 {extracted.text or "(текстовое содержимое отсутствует)"}
 
 ### Что известно об изображениях
-{images_note}
+{images_note}{refs_note}
 
 ### Примечания к файлу
 {notes_text}

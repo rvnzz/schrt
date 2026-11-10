@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     worker_poll_seconds: int = 5
     # Сколько изображений из работы уходит в запрос; остальные модель не видит
     ai_max_images: int = 10
+    # Apache Tika как sidecar для извлечения содержимого: http://tika:9998.
+    # Пусто — работаем штатными python-ридерами (docx/odt/pdf/xlsx).
+    tika_url: str = ""
+    tika_timeout_seconds: int = 60
 
     @property
     def ai_enabled(self) -> bool:
