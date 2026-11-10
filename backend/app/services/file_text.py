@@ -220,7 +220,49 @@ def _extract_odt(content: bytes) -> ExtractedContent:
         notes.append(f"Не удалось открыть ODT как zip: {exc}")
         images = []
 
-    return ExtractedContent(text="\n".join(text_parts), images_base64=images, notes=notes)
+    return ExtractedContent(
+        text="\n".join(text_parts), images_base64=images, notes=_dedupe(notes)
+    )
+
+
+def _docx_images_from_package(document: Document) -> Tuple[List[Tuple[str, str]], List[str]]:
+    """Картинки docx через штатный OPC-ридер python-docx.
+
+    Reader сам разворачивает связи .rels и знает реальные имена частей, поэтому
+    находит изображения и в word/media/, и в корне пакета, и по относительным
+    путям вида ../media/x.png. Это надёжнее любого самописного обхода zip.
+    """
+    images: List[Tuple[str, str]] = []
+    notes: List[str] = []
+    try:
+        parts = list(document.part.package.image_parts)
+    except Exception as exc:
+        notes.append(f"Связи пакета docx не разобрались: {exc}")
+        return images, notes
+
+    for part in sorted(parts, key=lambda p: _natural_key(str(p.partname))):
+        subtype = (part.content_type or "").split("/")[-1].lower()
+        if subtype not in IMAGE_EXTENSIONS:
+            notes.append(
+                f"Пропущено изображение docx неподдерживаемого формата: {part.partname} ({part.content_type})"
+            )
+            continue
+        try:
+            resized = _resize_image(part.blob)
+            images.append(("image/png", _image_to_base64(resized)))
+        except Exception as exc:
+            notes.append(f"Не удалось обработать изображение {part.partname}: {exc}")
+    return images, notes
+
+
+def _dedupe(items: List[str]) -> List[str]:
+    seen: set[str] = set()
+    unique: List[str] = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return unique
 
 
 def _extract_docx(content: bytes) -> ExtractedContent:
@@ -230,31 +272,46 @@ def _extract_docx(content: bytes) -> ExtractedContent:
     text_parts: List[str] = []
     images: List[Tuple[str, str]] = []
     notes: List[str] = []
+    document: Optional[Document] = None
 
     try:
         document = Document(io.BytesIO(content))
-        for para in document.paragraphs:
-            if para.text:
-                text_parts.append(para.text)
-        for table in document.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    if cell.text:
-                        text_parts.append(cell.text)
     except Exception as exc:
         notes.append(f"Не удалось извлечь текст docx: {exc}")
 
-    try:
-        with zipfile.ZipFile(io.BytesIO(content)) as zf:
-            parts, link_notes = _docx_image_parts(zf)
-            notes.extend(link_notes)
-            collected, image_notes = _collect_images(zf, parts, "docx")
-            images.extend(collected)
-            notes.extend(image_notes)
-    except Exception as exc:
-        notes.append(f"Не удалось открыть docx как zip: {exc}")
+    if document is not None:
+        try:
+            for para in document.paragraphs:
+                if para.text:
+                    text_parts.append(para.text)
+            for table in document.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text:
+                            text_parts.append(cell.text)
+        except Exception as exc:
+            notes.append(f"Не удалось прочитать содержимое docx: {exc}")
+        package_images, package_notes = _docx_images_from_package(document)
+        images.extend(package_images)
+        notes.extend(package_notes)
 
-    return ExtractedContent(text="\n".join(text_parts), images_base64=images, notes=notes)
+    if not images:
+        # python-docx не открыл пакет или не нашёл в нём частей: достаём zip напрямую
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                parts, link_notes = _docx_image_parts(zf)
+                collected, image_notes = _collect_images(zf, parts, "docx")
+                images.extend(collected)
+                notes.extend(link_notes)
+                notes.extend(image_notes)
+        except Exception as exc:
+            notes.append(f"Не удалось открыть docx как zip: {exc}")
+
+    return ExtractedContent(
+        text="\n".join(text_parts),
+        images_base64=images,
+        notes=_dedupe(notes),
+    )
 
 
 def _extract_pdf(content: bytes) -> ExtractedContent:
@@ -284,7 +341,9 @@ def _extract_pdf(content: bytes) -> ExtractedContent:
     except Exception as exc:
         notes.append(f"Не удалось прочитать PDF: {exc}")
 
-    return ExtractedContent(text="\n".join(text_parts), images_base64=images, notes=notes)
+    return ExtractedContent(
+        text="\n".join(text_parts), images_base64=images, notes=_dedupe(notes)
+    )
 
 
 def _extract_xlsx(content: bytes) -> ExtractedContent:
@@ -300,7 +359,9 @@ def _extract_xlsx(content: bytes) -> ExtractedContent:
                     text_parts.append(row_text)
     except Exception as exc:
         notes.append(f"Не удалось прочитать xlsx: {exc}")
-    return ExtractedContent(text="\n".join(text_parts), images_base64=[], notes=notes)
+    return ExtractedContent(
+        text="\n".join(text_parts), images_base64=[], notes=_dedupe(notes)
+    )
 
 
 def extract_file(key: str, original_filename: str) -> ExtractedContent:
