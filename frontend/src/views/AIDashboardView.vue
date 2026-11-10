@@ -44,10 +44,11 @@ type SortField = 'kind' | 'age' | 'student' | 'group'
 
 const KIND_ORDER: Record<AiProblemKind, number> = {
   error: 0,
-  no_brief: 1,
-  not_queued: 2,
-  stale_pending: 3,
-  ai_off: 4,
+  manual_review: 1,
+  no_brief: 2,
+  not_queued: 3,
+  stale_pending: 4,
+  ai_off: 5,
 }
 
 const overview = ref<AiOverview | null>(null)
@@ -86,6 +87,13 @@ const cards = computed(() => {
       kind: 'stale_pending' as AiProblemKind,
     },
     {
+      key: 'manual_review',
+      label: 'Нужна проверка',
+      value: data.problems_by_kind.manual_review ?? 0,
+      hint: 'AI не нашёл скриншоты или файл не читается',
+      kind: 'manual_review' as AiProblemKind,
+    },
+    {
       key: 'error',
       label: 'Ошибки проверки',
       value: data.problems_by_kind.error ?? 0,
@@ -101,6 +109,8 @@ const cards = computed(() => {
     },
   ]
 })
+
+const missingEvidence = computed(() => overview.value?.missing_evidence ?? { count: 0, items: [] })
 
 const visibleProblems = computed(() => {
   const term = search.value.trim().toLowerCase()
@@ -185,6 +195,25 @@ async function retryAllErrors() {
   }
 }
 
+/**
+ * Перепроверка работ, где модель уже написала «не нашёл скриншоты», но оценку всё
+ * равно поставила. Они уходят по новому промпту и обычно возвращаются как «ручная проверка».
+ */
+async function recheckMissingEvidence() {
+  busy.value = 'evidence'
+  try {
+    const response = await api.post('/ai/enqueue', { scope: 'missing_evidence', limit: 200 })
+    const enqueued = response.data.enqueued as number
+    if (enqueued) toast.success(`На перепроверку отправлено работ: ${enqueued}`)
+    else toast.error('Похожих работ не нашлось: модель нигде не жаловалась на материалы')
+    await fetchOverview(true)
+  } catch (err) {
+    toast.error(getErrorMessage(err))
+  } finally {
+    busy.value = ''
+  }
+}
+
 async function retrySubmission(submissionId: number, busyKey: string) {
   busy.value = busyKey
   try {
@@ -229,6 +258,7 @@ function sortIcon(field: SortField) {
 function kindBadge(kind: AiProblemKind) {
   if (kind === 'error') return 'destructive'
   if (kind === 'ai_off') return 'destructive'
+  if (kind === 'manual_review') return 'default'
   if (kind === 'no_brief' || kind === 'not_queued') return 'secondary'
   return 'outline'
 }
@@ -281,7 +311,7 @@ onUnmounted(stopPolling)
       </CardContent>
     </Card>
 
-    <div v-if="overview" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div v-if="overview" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <button
         v-for="card in cards"
         :key="card.key"
@@ -295,6 +325,81 @@ onUnmounted(stopPolling)
         <p class="mt-1 text-xs text-muted-foreground">{{ card.hint }}</p>
       </button>
     </div>
+
+    <Card v-if="missingEvidence.count" class="border-amber-500/60 bg-amber-500/5">
+      <CardHeader>
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle>AI что-то не нашёл в {{ missingEvidence.count }} проверенных работах</CardTitle>
+            <CardDescription>
+              Модель поставила оценку и одновременно написала, что скриншотов или изображений не
+              хватает. Прогоните такие работы заново: теперь недостающие материалы уходят на ручную
+              проверку без оценки
+            </CardDescription>
+          </div>
+          <Button :disabled="busy === 'evidence'" @click="recheckMissingEvidence">
+            <RotateCcw class="mr-2 h-4 w-4" />
+            Перепроверить {{ missingEvidence.count }}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Студент</TableHead>
+              <TableHead>Задание</TableHead>
+              <TableHead>Оценка AI</TableHead>
+              <TableHead>На что пожаловался AI</TableHead>
+              <TableHead class="text-right">Действия</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="row in missingEvidence.items.slice(0, 15)"
+              :key="`ev-${row.submission_id}`"
+            >
+              <TableCell>
+                <p>{{ row.student }}</p>
+                <p class="text-xs text-muted-foreground">{{ row.group_name }}</p>
+              </TableCell>
+              <TableCell>
+                <router-link
+                  :to="`/assignments/${row.assignment_id}`"
+                  class="text-sm text-primary hover:underline"
+                >
+                  {{ row.assignment_title }}
+                </router-link>
+              </TableCell>
+              <TableCell>
+                <Badge v-if="row.grade !== null" variant="outline">{{ row.grade }}</Badge>
+                <span v-else class="text-xs text-muted-foreground">—</span>
+              </TableCell>
+              <TableCell class="max-w-md">
+                <p class="break-words text-xs text-muted-foreground">{{ row.hint }}</p>
+              </TableCell>
+              <TableCell class="text-right">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="busy === `ev-${row.submission_id}`"
+                  @click="retrySubmission(row.submission_id, `ev-${row.submission_id}`)"
+                >
+                  Перепроверить
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+        <p v-if="missingEvidence.count > 15" class="mt-2 text-xs text-muted-foreground">
+          Показаны первые 15 из {{ missingEvidence.count }}
+        </p>
+        <p class="mt-2 text-xs text-muted-foreground">
+          Одно нажатие перечитывает до 200 работ — каждую по запросу к модели. Если работ
+          больше, нажмите ещё раз, когда очередь опустеет.
+        </p>
+      </CardContent>
+    </Card>
 
     <Card>
       <CardHeader>
@@ -416,7 +521,7 @@ onUnmounted(stopPolling)
                     :disabled="busy === String(row.submission_id)"
                     @click="retryRow(row)"
                   >
-                    {{ row.kind === 'error' ? 'Перепроверить' : 'В очередь' }}
+                    {{ row.kind === 'error' || row.kind === 'manual_review' ? 'Перепроверить' : 'В очередь' }}
                   </Button>
                   <span v-else class="text-xs text-muted-foreground">
                     {{ row.kind === 'ai_off' ? 'нужен API-ключ' : 'воркер сам подхватит' }}
@@ -472,6 +577,7 @@ onUnmounted(stopPolling)
               </TableCell>
               <TableCell class="text-sm text-muted-foreground">
                 <span v-if="row.problem_counts.error">ошибок: {{ row.problem_counts.error }} · </span>
+                <span v-if="row.problem_counts.manual_review">ручной проверки: {{ row.problem_counts.manual_review }} · </span>
                 <span v-if="row.problem_counts.no_brief">без текста: {{ row.problem_counts.no_brief }} · </span>
                 <span v-if="row.problem_counts.not_queued">не в очереди: {{ row.problem_counts.not_queued }} · </span>
                 <span v-if="row.problem_counts.stale_pending">зависло: {{ row.problem_counts.stale_pending }} · </span>

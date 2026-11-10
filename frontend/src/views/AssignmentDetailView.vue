@@ -48,6 +48,7 @@ interface Submission {
   ai_grade: number | null
   ai_feedback: string | null
   ai_error: string | null
+  ai_review_reason: string | null
   ai_attempts: number
 }
 
@@ -214,6 +215,8 @@ function aiStatusText(status: string): string {
     pending: 'Проверяется…',
     done: 'Готово',
     error: 'Ошибка',
+    // Модель не нашла обязательные материалы — оценку она не поставила
+    manual_review: 'Ручная проверка',
     disabled: '—',
   }
   return map[status] || status
@@ -373,6 +376,9 @@ onUnmounted(stopPolling)
                 </Badge>
                 <Badge v-else-if="sub.ai_status === 'pending'" variant="outline">{{ aiStatusText(sub.ai_status) }}</Badge>
                 <Badge v-else-if="sub.ai_status === 'error'" variant="destructive">{{ aiStatusText(sub.ai_status) }}</Badge>
+                <Badge v-else-if="sub.ai_status === 'manual_review'" variant="secondary">
+                  {{ aiStatusText(sub.ai_status) }}
+                </Badge>
                 <span v-else class="text-muted-foreground">{{ aiStatusText(sub.ai_status) }}</span>
               </TableCell>
               <TableCell>
@@ -380,6 +386,12 @@ onUnmounted(stopPolling)
                   <p class="text-xs text-destructive">{{ sub.ai_error }}</p>
                   <p v-if="sub.ai_attempts" class="mt-1 text-xs text-muted-foreground">
                     попыток: {{ sub.ai_attempts }}
+                  </p>
+                </div>
+                <div v-else-if="sub.ai_review_reason" class="max-w-xs">
+                  <p class="text-xs text-amber-600 dark:text-amber-500">{{ sub.ai_review_reason }}</p>
+                  <p v-if="sub.ai_feedback" class="mt-1 text-xs text-muted-foreground">
+                    {{ sub.ai_feedback }}
                   </p>
                 </div>
                 <div v-else-if="sub.ai_feedback" class="max-w-xs">

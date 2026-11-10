@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
     opencode_go_model: str = "glm-5.3-flash"
     worker_poll_seconds: int = 5
+    # Сколько изображений из работы уходит в запрос; остальные модель не видит
+    ai_max_images: int = 10
 
     @property
     def ai_enabled(self) -> bool:

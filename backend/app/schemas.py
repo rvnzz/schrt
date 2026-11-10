@@ -129,6 +129,7 @@ class SubmissionOut(BaseModel):
     ai_grade: Optional[int]
     ai_feedback: Optional[str]
     ai_error: Optional[str] = None
+    ai_review_reason: Optional[str] = None
     ai_attempts: int = 0
     ai_checked_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)

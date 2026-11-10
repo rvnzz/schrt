@@ -1,4 +1,10 @@
-export type AiProblemKind = 'error' | 'no_brief' | 'not_queued' | 'stale_pending' | 'ai_off'
+export type AiProblemKind =
+  | 'error'
+  | 'manual_review'
+  | 'no_brief'
+  | 'not_queued'
+  | 'stale_pending'
+  | 'ai_off'
 
 export interface AiProblemRow {
   submission_id: number
@@ -19,6 +25,22 @@ export interface AiProblemRow {
   has_brief: boolean
   fixable_by_brief: boolean
   retryable: boolean
+  /** Работу увели человеку: AI не нашёл обязательных материалов */
+  manual_review: boolean
+}
+
+/** done-работа, в комментарии которой AI пожаловался на недостающие скриншоты. */
+export interface AiEvidenceRow {
+  submission_id: number
+  assignment_id: number
+  assignment_title: string
+  group_id: number
+  group_name: string
+  student: string
+  original_filename: string
+  grade: number | null
+  hint: string
+  submitted_at: string
 }
 
 export interface AiAssignmentRow {
@@ -65,11 +87,14 @@ export interface AiOverview {
   assignments: AiAssignmentRow[]
   problems: AiProblemRow[]
   low_grades: AiLowGradeRow[]
+  /** Проверенные работы, где AI написал, что не нашёл материалы */
+  missing_evidence: { count: number; items: AiEvidenceRow[] }
 }
 
 export const KIND_OPTIONS: Array<{ value: AiProblemKind | 'all'; label: string }> = [
   { value: 'all', label: 'Все проблемы' },
   { value: 'error', label: 'Ошибка проверки' },
+  { value: 'manual_review', label: 'Нужна ручная проверка' },
   { value: 'no_brief', label: 'Нет текста задания' },
   { value: 'not_queued', label: 'Не поставлено в очередь' },
   { value: 'stale_pending', label: 'Давно в очереди' },

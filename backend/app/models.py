@@ -84,11 +84,14 @@ class Submission(Base):
     is_late = Column(Boolean, default=False)
     is_group_work = Column(Boolean, default=False)
     group_members = Column(JSONB, nullable=True)
+    # pending → done (оценка) | error (авария) | manual_review (материалов не хватило)
     ai_status = Column(String, default="disabled")
     ai_grade = Column(Integer, nullable=True)
     ai_feedback = Column(Text, nullable=True)
     # Почему проверка не прошла — отдельно от комментария модели
     ai_error = Column(Text, nullable=True)
+    # Почему работу отдали человеку: каких материалов не хватило
+    ai_review_reason = Column(Text, nullable=True)
     ai_attempts = Column(Integer, default=0, nullable=False)
     ai_checked_at = Column(DateTime, nullable=True)
 

@@ -66,6 +66,7 @@ services:
       OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
       OPENCODE_GO_MODEL: ${OPENCODE_GO_MODEL:-glm-5.3-flash}
       WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
+      AI_MAX_IMAGES: ${AI_MAX_IMAGES:-10}
     ports:
       - "${APP_PORT:-8000}:8000"
     depends_on:
@@ -88,6 +89,7 @@ services:
       OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
       OPENCODE_GO_MODEL: ${OPENCODE_GO_MODEL:-glm-5.3-flash}
       WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
+      AI_MAX_IMAGES: ${AI_MAX_IMAGES:-10}
     depends_on:
       postgres:
         condition: service_healthy

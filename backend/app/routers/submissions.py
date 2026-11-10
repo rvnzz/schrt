@@ -112,6 +112,8 @@ async def grade_submission_manual(
     submission.ai_status = "pending"
     submission.ai_grade = None
     submission.ai_feedback = None
+    submission.ai_error = None
+    submission.ai_review_reason = None
     await db.commit()
     return {"success": True}
 

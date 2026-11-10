@@ -33,7 +33,7 @@ def _latest_by_student(assignment: Assignment) -> Dict[int, Submission]:
 def build_group_report(
     group_name: str, students: List["object"], assignments: List[Assignment]
 ) -> bytes:
-    """XLSX с двумя листами: сдачи и оценки всех заданий группы."""
+    """XLSX с тремя листами: сдачи, оценки всех заданий группы и проблемы AI-проверки."""
     # Pre-compute lookups once instead of per student
     per_assignment: List[Tuple[Assignment, Dict[int, Submission]]] = [
         (assignment, _latest_by_student(assignment)) for assignment in assignments
@@ -91,13 +91,13 @@ def build_group_report(
     _style_sheet(grades_ws, bold_first_row=True)
 
     # --- Лист 3: проблемы AI-проверки ---
-    errors_ws = wb.create_sheet("Ошибки AI")
+    errors_ws = wb.create_sheet("Проблемы AI")
     errors_ws.append(["Задание", "Фамилия", "Имя", "Файл", "Статус", "Попыток", "Причина"])
     for assignment, _ in per_assignment:
         for submission in assignment.submissions or []:
-            if submission.ai_status not in ("error", "disabled") and not submission.ai_error:
-                continue
-            if submission.ai_status == "done":
+            status = submission.ai_status or "disabled"
+            # done и pending — штатные состояния, человек их ищут в других листах
+            if status in ("done", "pending"):
                 continue
             errors_ws.append(
                 [
@@ -105,10 +105,11 @@ def build_group_report(
                     submission.last_name,
                     submission.first_name,
                     submission.original_filename,
-                    submission.ai_status,
+                    status,
                     submission.ai_attempts or 0,
-                    submission.ai_error
-                    or (submission.ai_feedback if submission.ai_status == "error" else "")
+                    submission.ai_review_reason
+                    or submission.ai_error
+                    or (submission.ai_feedback if status == "error" else "")
                     or "",
                 ]
             )

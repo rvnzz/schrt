@@ -10,11 +10,25 @@ from app.auth import get_current_teacher
 from app.config import settings
 from app.database import get_db
 from app.models import Assignment, Group, Submission, Teacher
-from app.services.ai_overview import KIND_LABELS, build_overview
+from app.services.ai_evidence import looks_like_missing_evidence
+from app.services.ai_overview import (
+    DONE,
+    ERROR,
+    KIND_LABELS,
+    MANUAL,
+    MISSING_EVIDENCE_SCAN_LIMIT,
+    build_overview,
+)
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
-REQUEUE_STATUSES = ("disabled", "error")
+# Статусы, которые преподаватель может вернуть в очередь вручную
+REQUEUE_STATUSES = ("disabled", "error", MANUAL)
+
+SCOPE_ALL_ERRORS = "all_errors"
+SCOPE_MANUAL = "manual_review"
+SCOPE_MISSING_EVIDENCE = "missing_evidence"
+SCOPES = (SCOPE_ALL_ERRORS, SCOPE_MANUAL, SCOPE_MISSING_EVIDENCE)
 
 
 class AIEnqueueRequest(BaseModel):
@@ -28,8 +42,8 @@ class AIEnqueueRequest(BaseModel):
         chosen = [self.assignment_id is not None, bool(self.submission_ids), self.scope is not None]
         if sum(chosen) != 1:
             raise ValueError("Нужно указать один из параметров: assignment_id, submission_ids или scope")
-        if self.scope not in (None, "all_errors"):
-            raise ValueError("scope поддерживает только значение all_errors")
+        if self.scope not in (None, *SCOPES):
+            raise ValueError(f"scope поддерживает значения: {', '.join(SCOPES)}")
         return self
 
 
@@ -50,7 +64,10 @@ async def _teacher_assignments(teacher_id: int, db: AsyncSession) -> List[Assign
 @router.get("/overview")
 async def overview(
     group_id: Optional[int] = Query(default=None),
-    kind: Optional[str] = Query(default=None, description="error | no_brief | not_queued | stale_pending | ai_off"),
+    kind: Optional[str] = Query(
+        default=None,
+        description="error | manual_review | no_brief | not_queued | stale_pending | ai_off",
+    ),
     stale_minutes: int = Query(default=15, ge=1, le=1440),
     problem_limit: int = Query(default=200, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
@@ -86,28 +103,6 @@ async def enqueue(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     """Ставит непроверенные работы в очередь. Работы без текста задания пропускаются."""
-    query = (
-        select(Submission)
-        .join(Assignment, Submission.assignment_id == Assignment.id)
-        .join(Group, Assignment.group_id == Group.id)
-        .where(
-            Group.teacher_id == current_teacher.id,
-            Submission.ai_status.in_(REQUEUE_STATUSES),
-        )
-        .options(selectinload(Submission.assignment))
-        .order_by(Submission.submitted_at.asc())
-    )
-
-    if data.submission_ids:
-        query = query.where(Submission.id.in_(data.submission_ids))
-    elif data.assignment_id is not None:
-        query = query.where(Assignment.id == data.assignment_id)
-    elif data.scope == "all_errors":
-        query = query.where(Submission.ai_status == "error")
-
-    result = await db.execute(query)
-    candidates = list(result.scalars().all())
-
     if data.assignment_id is not None:
         exists = await db.execute(
             select(Assignment.id)
@@ -117,11 +112,51 @@ async def enqueue(
         if exists.scalar_one_or_none() is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
+    # Для «не найдено материалов» берём уже проверенные работы — их перечитывает модель
+    if data.scope == SCOPE_MISSING_EVIDENCE:
+        statuses = [DONE]
+    elif data.scope == SCOPE_ALL_ERRORS:
+        statuses = [ERROR]
+    elif data.scope == SCOPE_MANUAL:
+        statuses = [MANUAL]
+    elif data.submission_ids:
+        # Конкретную работу перечитываем в любом состоянии: с ней преподаватель
+        # разберётся сам, включая уже оценённую из панели «AI что-то не нашёл»
+        statuses = [*REQUEUE_STATUSES, DONE]
+    else:
+        statuses = list(REQUEUE_STATUSES)
+
+    query = (
+        select(Submission)
+        .join(Assignment, Submission.assignment_id == Assignment.id)
+        .join(Group, Assignment.group_id == Group.id)
+        .where(
+            Group.teacher_id == current_teacher.id,
+            Submission.ai_status.in_(statuses),
+        )
+        .options(selectinload(Submission.assignment))
+        .order_by(Submission.submitted_at.asc())
+    )
+
+    if data.submission_ids:
+        query = query.where(Submission.id.in_(data.submission_ids))
+    elif data.assignment_id is not None:
+        query = query.where(Assignment.id == data.assignment_id)
+    elif data.scope == SCOPE_MISSING_EVIDENCE:
+        query = query.limit(MISSING_EVIDENCE_SCAN_LIMIT)
+
+    result = await db.execute(query)
+    candidates = list(result.scalars().all())
+
     queueable: List[Submission] = []
     skipped_no_brief = 0
     for submission in candidates:
         if not submission.assignment.brief_md:
             skipped_no_brief += 1
+            continue
+        if data.scope == SCOPE_MISSING_EVIDENCE and not looks_like_missing_evidence(
+            submission.ai_feedback or ""
+        ):
             continue
         queueable.append(submission)
 
@@ -131,11 +166,14 @@ async def enqueue(
         submission.ai_grade = None
         submission.ai_feedback = None
         submission.ai_error = None
+        submission.ai_review_reason = None
 
     await db.commit()
 
     return {
         "enqueued": len(selected),
+        "scope": data.scope,
+        "scanned": len(candidates),
         "skipped_no_brief": skipped_no_brief,
         "skipped_by_limit": max(0, len(queueable) - len(selected)),
     }

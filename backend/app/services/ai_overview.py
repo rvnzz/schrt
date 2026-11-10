@@ -7,10 +7,14 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from app.services.ai_evidence import missing_evidence_hints
+
 DONE = "done"
 PENDING = "pending"
 ERROR = "error"
 DISABLED = "disabled"
+# AI не нашёл обязательных материалов — решение отдаём человеку
+MANUAL = "manual_review"
 
 STALE_PENDING = "stale_pending"
 NO_BRIEF = "no_brief"
@@ -18,25 +22,39 @@ NOT_QUEUED = "not_queued"
 AI_OFF = "ai_off"
 
 # Порядок важности для таблицы проблем: сначала то, что чинится одним кликом
-KIND_ORDER = {ERROR: 0, NO_BRIEF: 1, NOT_QUEUED: 2, STALE_PENDING: 3, AI_OFF: 4}
+KIND_ORDER = {
+    ERROR: 0,
+    MANUAL: 1,
+    NO_BRIEF: 2,
+    NOT_QUEUED: 3,
+    STALE_PENDING: 4,
+    AI_OFF: 5,
+}
 
 KIND_LABELS: Dict[str, str] = {
     ERROR: "Ошибка проверки",
+    MANUAL: "Нужна ручная проверка",
     NO_BRIEF: "Нет текста задания",
     NOT_QUEUED: "Не поставлено в очередь",
     STALE_PENDING: "Давно в очереди",
     AI_OFF: "AI не настроен",
 }
 
-STATUS_KEYS = (DONE, PENDING, ERROR, DISABLED)
-KIND_KEYS = (ERROR, STALE_PENDING, NO_BRIEF, NOT_QUEUED, AI_OFF)
+STATUS_KEYS = (DONE, PENDING, ERROR, DISABLED, MANUAL)
+KIND_KEYS = (ERROR, MANUAL, STALE_PENDING, NO_BRIEF, NOT_QUEUED, AI_OFF)
 
 LOW_GRADE = 3
+
+# Строки `done`, в которых модель пожаловалась на недостающие материалы:
+# их стоит перепроверить по новому промпту одной кнопкой
+MISSING_EVIDENCE_SCAN_LIMIT = 300
 
 
 def _reason(submission: Any) -> str:
     if submission.ai_error:
         return submission.ai_error
+    if getattr(submission, "ai_review_reason", None):
+        return submission.ai_review_reason
     # У строк до миграции причина аварии лежала в ai_feedback
     if (submission.ai_status or "") == ERROR and submission.ai_feedback:
         return submission.ai_feedback
@@ -63,6 +81,9 @@ def classify(
     status = submission.ai_status or DISABLED
     if status == DONE:
         return None
+    # Работу уже увели к человеку: это проблема не про настройку AI
+    if status == MANUAL:
+        return MANUAL
     if not ai_enabled:
         return AI_OFF
     if status == ERROR:
@@ -95,6 +116,7 @@ def build_overview(
     assignment_rows: List[Dict[str, Any]] = []
     problems: List[Dict[str, Any]] = []
     low_grades: List[Dict[str, Any]] = []
+    suspects: List[Dict[str, Any]] = []
 
     for assignment in assignments:
         has_brief = bool(assignment.brief_md)
@@ -155,7 +177,9 @@ def build_overview(
                         # Чинится текстом задания: брифа просто нет
                         "fixable_by_brief": kind == NO_BRIEF,
                         # Можно вернуть в очередь прямо сейчас
-                        "retryable": kind in (ERROR, NOT_QUEUED),
+                        "retryable": kind in (ERROR, NOT_QUEUED, MANUAL),
+                        # Работу увели к человеку — подсказка, что именно не нашли
+                        "manual_review": kind == MANUAL,
                     }
                 )
 
@@ -173,6 +197,26 @@ def build_overview(
                         "submitted_at": submission.submitted_at,
                     }
                 )
+
+            # done-работа, где модель пожаловалась на недостающие материалы:
+            # оценка опубликована по неполной работе, её стоит перепроверить
+            if status == DONE:
+                hints = missing_evidence_hints(submission.ai_feedback or "")
+                if hints:
+                    suspects.append(
+                        {
+                            "submission_id": submission.id,
+                            "assignment_id": assignment.id,
+                            "assignment_title": assignment.title,
+                            "group_id": assignment.group_id,
+                            "group_name": group_name,
+                            "student": f"{submission.last_name} {submission.first_name}".strip(),
+                            "original_filename": submission.original_filename,
+                            "grade": submission.ai_grade,
+                            "hint": hints[0],
+                            "submitted_at": submission.submitted_at,
+                        }
+                    )
 
         for key, value in status_counts.items():
             totals[key] += value
@@ -203,6 +247,7 @@ def build_overview(
 
     problems.sort(key=lambda row: (KIND_ORDER.get(row["kind"], 9), -(row["age_seconds"] or 0)))
     low_grades.sort(key=lambda row: (row["grade"], row["group_name"], row["student"]))
+    suspects.sort(key=lambda row: (row["grade"] if row["grade"] is not None else 99, row["group_name"], row["student"]))
 
     return {
         "ai_enabled": ai_enabled,
@@ -216,4 +261,9 @@ def build_overview(
         "assignments": sorted(assignment_rows, key=lambda row: (row["group_name"], row["title"])),
         "problems": problems[:problem_limit],
         "low_grades": low_grades,
+        # Кандидаты на перепроверку: done-работы с жалобой на недостающие скриншоты
+        "missing_evidence": {
+            "count": len(suspects),
+            "items": suspects[:MISSING_EVIDENCE_SCAN_LIMIT],
+        },
     }

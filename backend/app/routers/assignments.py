@@ -155,9 +155,15 @@ async def grade_all_submissions(
         update(Submission)
         .where(
             Submission.assignment_id == assignment_id,
-            Submission.ai_status.in_(["disabled", "error"]),
+            Submission.ai_status.in_(["disabled", "error", "manual_review"]),
         )
-        .values(ai_status="pending", ai_grade=None, ai_feedback=None, ai_error=None)
+        .values(
+            ai_status="pending",
+            ai_grade=None,
+            ai_feedback=None,
+            ai_error=None,
+            ai_review_reason=None,
+        )
     )
     await db.commit()
     return {"success": True}
@@ -196,6 +202,7 @@ async def export_grades_csv(
         "Оценка AI",
         "Комментарий AI",
         "Ошибка AI",
+        "Нужна ручная проверка",
     ])
 
     for sub in assignment.submissions:
@@ -217,6 +224,7 @@ async def export_grades_csv(
             sub.ai_grade if sub.ai_grade is not None else "",
             sub.ai_feedback or "",
             sub.ai_error or "",
+            sub.ai_review_reason or "",
         ])
 
     csv_bytes = output.getvalue().encode("utf-8-sig")
