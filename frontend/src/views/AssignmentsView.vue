@@ -72,8 +72,8 @@ const sortField = ref<SortField>(
     ? storedSort
     : 'group'
 )
-const sortDesc = ref(false)
-const groupFilter = ref<string>('all')
+const sortDesc = ref(localStorage.getItem('assignments.sortDesc') === 'desc')
+const groupFilter = ref<string>(localStorage.getItem('assignments.group') || 'all')
 
 const form = ref({
   title: '',
@@ -132,6 +132,13 @@ async function fetchData() {
     const [a, g] = await Promise.all([api.get('/assignments'), api.get('/groups')])
     assignments.value = a.data
     groups.value = g.data
+    // Группа из сохранённого фильтра могла быть удалена — возвращаем «все»
+    if (
+      groupFilter.value !== 'all' &&
+      !groups.value.some((group) => String(group.id) === groupFilter.value)
+    ) {
+      groupFilter.value = 'all'
+    }
   } catch (err) {
     toast.error(getErrorMessage(err))
   }
@@ -232,6 +239,8 @@ const visibleAssignments = computed(() => {
 })
 
 watch(sortField, (value) => localStorage.setItem('assignments.sort', value))
+watch(sortDesc, (value) => localStorage.setItem('assignments.sortDesc', value ? 'desc' : 'asc'))
+watch(groupFilter, (value) => localStorage.setItem('assignments.group', value))
 
 onMounted(fetchData)
 </script>
