@@ -10,7 +10,7 @@ from app.database import get_db
 from app.auth import get_current_teacher
 from app.models import Teacher, Group, Student, Assignment, Submission
 from app.services.zip_export import build_submissions_zip
-from app.services.report_export import build_group_report, build_group_grades_csv
+from app.services.report_export import build_group_report, build_group_grades_csv, build_group_submitters_xlsx
 from app import s3
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -148,6 +148,23 @@ async def group_report(
         iter([report_bytes]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=group_{group_id}_report.xlsx"},
+    )
+
+
+@router.get("/groups/{group_id}/submitters")
+async def group_submitters(
+    group_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """XLSX «кто сдавал»: по каждому заданию список сдавших студентов."""
+    _, _, assignments = await get_owned_group_report_data(group_id, current_teacher.id, db)
+
+    xlsx_bytes = build_group_submitters_xlsx(f"group_{group_id}", assignments)
+    return StreamingResponse(
+        iter([xlsx_bytes]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=group_{group_id}_submitters.xlsx"},
     )
 
 

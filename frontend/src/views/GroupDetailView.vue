@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileSpreadsheet, Search } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileSpreadsheet, Search, Users } from 'lucide-vue-next'
 import { api, getErrorMessage } from '@/lib/api'
 import { triggerDownload } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -162,19 +162,33 @@ async function fetchGroup() {
   }
 }
 
-async function exportGrades(kind: 'report' | 'grades') {
+async function exportGrades(kind: 'report' | 'grades' | 'submitters') {
   exporting.value = kind
-  const path = kind === 'report'
-    ? `/submissions/groups/${groupId}/report`
-    : `/submissions/groups/${groupId}/grades-csv`
+  const path =
+    kind === 'report'
+      ? `/submissions/groups/${groupId}/report`
+      : kind === 'grades'
+        ? `/submissions/groups/${groupId}/grades-csv`
+        : `/submissions/groups/${groupId}/submitters`
   const filename =
     group.value?.name.replace(/\s+/g, '_') || `group_${groupId}`
-  const name = kind === 'report' ? `${filename}_отчёт.xlsx` : `${filename}_оценки.csv`
+  const name =
+    kind === 'report'
+      ? `${filename}_отчёт.xlsx`
+      : kind === 'grades'
+        ? `${filename}_оценки.csv`
+        : `${filename}_сдавшие.xlsx`
 
   try {
     const response = await api.get(path, { responseType: 'blob' })
     triggerDownload(response.data, name)
-    toast.success(kind === 'report' ? 'Отчёт группы выгружен' : 'Оценки группы выгружены')
+    toast.success(
+      kind === 'report'
+        ? 'Отчёт группы выгружен'
+        : kind === 'grades'
+          ? 'Оценки группы выгружены'
+          : 'Список сдавших выгружен'
+    )
   } catch (err) {
     toast.error(getErrorMessage(err))
   } finally {
@@ -240,6 +254,10 @@ onMounted(fetchGroup)
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
+        <Button variant="outline" :disabled="exporting === 'submitters'" @click="exportGrades('submitters')">
+          <Users class="mr-2 h-4 w-4" />
+          Кто сдавал (XLSX)
+        </Button>
         <Button variant="outline" :disabled="exporting === 'grades'" @click="exportGrades('grades')">
           <Download class="mr-2 h-4 w-4" />
           Оценки группы (CSV)

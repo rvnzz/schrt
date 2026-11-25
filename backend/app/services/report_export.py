@@ -166,6 +166,75 @@ def build_group_grades_csv(
     return output.getvalue().encode("utf-8-sig")
 
 
+def build_group_submitters_xlsx(
+    group_name: str, assignments: List[Assignment]
+) -> bytes:
+    """XLSX «кто сдавал»: по каждому заданию — список сдавших студентов.
+
+    Лист 1 «Сдавшие»: строка на каждую сдачу (последняя сдача студента по заданию).
+    Лист 2 «Сводка»: сколько человек сдало каждое задание.
+    """
+    wb = Workbook()
+
+    # --- Лист 1: сдавшие ---
+    ws = wb.active
+    ws.title = "Сдавшие"
+    ws.append(
+        ["Задание", "Фамилия", "Имя", "Вместе с", "Файл", "Дата сдачи", "Вовремя", "Оценка"]
+    )
+
+    for assignment in assignments:
+        latest = _latest_by_student(assignment)
+        # Сдачи без привязки к студенту (анонимные) — тоже сдавшие, идём отдельными строками
+        anonymous = [s for s in assignment.submissions or [] if not s.student_id]
+        rows: List[Submission] = list(latest.values()) + anonymous
+        rows.sort(key=lambda s: (s.last_name or "", s.first_name or ""))
+
+        for submission in rows:
+            members = ""
+            if submission.is_group_work and submission.group_members:
+                members = ", ".join(
+                    f"{m.get('last_name', '')} {m.get('first_name', '')}".strip()
+                    for m in submission.group_members
+                )
+            submitted_at = submission.submitted_at
+            grade = submission.ai_grade
+            ws.append(
+                [
+                    assignment.title,
+                    submission.last_name,
+                    submission.first_name,
+                    members,
+                    submission.original_filename or "",
+                    submitted_at.strftime("%d.%m.%Y %H:%M") if submitted_at else "",
+                    "да" if not submission.is_late else "нет",
+                    grade if grade is not None else "",
+                ]
+            )
+
+    if ws.max_row == 1:
+        ws.append(["Сдач пока нет"] + [""] * 7)
+    _style_sheet(ws, bold_first_row=True)
+
+    # --- Лист 2: сводка по заданиям ---
+    summary_ws = wb.create_sheet("Сводка")
+    summary_ws.append(["Задание", "Сдало человек", "Всего сдач"])
+    for assignment in assignments:
+        submissions = assignment.submissions or []
+        unique = len(_latest_by_student(assignment)) + len(
+            [s for s in submissions if not s.student_id]
+        )
+        summary_ws.append([assignment.title, unique, len(submissions)])
+    if summary_ws.max_row == 1:
+        summary_ws.append(["Заданий пока нет"] + [""] * 2)
+    _style_sheet(summary_ws, bold_first_row=True)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.read()
+
+
 def _style_sheet(ws, bold_first_row: bool) -> None:
     if bold_first_row:
         for cell in ws[1]:
