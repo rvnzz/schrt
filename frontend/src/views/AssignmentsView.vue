@@ -176,8 +176,15 @@ async function saveAssignment() {
       await api.patch(`/assignments/${editingAssignment.value.id}`, payload)
       toast.success('Задание обновлено')
     } else {
-      await api.post('/assignments', payload)
-      toast.success('Задание создано')
+      const created = await api.post('/assignments', payload)
+      // Сразу копируем ссылку на сдачу нового задания
+      try {
+        const linkResponse = await api.get(`/assignments/${created.data.id}/link`)
+        await navigator.clipboard.writeText(linkResponse.data.link)
+        toast.success('Задание создано — ссылка на сдачу скопирована')
+      } catch {
+        toast.success('Задание создано')
+      }
     }
     isOpen.value = false
     resetForm()
